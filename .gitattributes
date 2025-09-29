@@ -1,3 +1,4 @@
 data/raw/evp_1200itr_fmt2.zarr/ filter=lfs diff=lfs merge=lfs -text
 data/intermediate/evp_1200itr_high_dv.zarr/ filter=lfs diff=lfs merge=lfs -text
 data/intermediate/evp_1200itr_medium.zarr/ filter=lfs diff=lfs merge=lfs -text
+data/raw/shortevp.zarr filter=lfs diff=lfs merge=lfs -text
