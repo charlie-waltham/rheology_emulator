@@ -194,7 +194,8 @@ def define_nn(architecture, n_features, n_labels):
     # Parallelize model if multiple GPUs are available
     if torch.cuda.device_count() > 1:
         model = torch.nn.DataParallel(model)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cpu")
     model = model.to(device)
     return model
 
