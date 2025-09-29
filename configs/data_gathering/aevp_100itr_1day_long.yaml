@@ -1,6 +1,6 @@
 data_label: aevp_100itr_1day_long
-raw_data_path: /data/scratch/max.thomas/rheology_training_data/
-output_path: /data/users/max.thomas/rheology_training_data/
+raw_data_path: $DATADIR/rheology_training_data/
+output_path: $DATADIR/rheology_training_data/
 files:
   - dr835o_1ts_19760101_19760101_icemod_19760101-19760101.nc
 features: ['siconc', 'sithic', 'sivelv', 'sivelu', 'utau_ai', 'utau_oi', 'vtau_ai', 'vtau_oi', 'sidive', 'sishea']

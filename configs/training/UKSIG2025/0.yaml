@@ -4,8 +4,8 @@
 pairs_path: ../data/raw/evp_1200itr_fmt2.zarr
 # pairs_path: ../data/raw/evp_1200itr_fmt2.zarr
 parameters: ../configs/parameters/nn_base.yaml
-results_path: ../results/nn/UKSIG2025/0/
-architecture: ../configs/nn_architecture/it_2L.yaml
+results_path: ../results/nn/poster/0/
+architecture: ../configs/nn_architecture/it_4L.yaml
 save_data: True
 
 # TODO: add batch size, scaler, val frac
@@ -16,8 +16,8 @@ train_labels: ['sivelv']
 difference_labels: False
 zarr_fmt: fmt2
 scale_features: True
-shorten_dataset: 1000000
-sequential: False
+shorten_dataset: 100000
+sequential: True
 save_val: True
 
 loss: MSELoss

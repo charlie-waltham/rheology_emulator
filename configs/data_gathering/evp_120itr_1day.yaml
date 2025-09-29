@@ -1,7 +1,7 @@
 # This loads one day of ts frequency output and saves to a zarr with feature/label pairs
 data_label: evp_120itr_1day
-raw_data_path: /data/scratch/max.thomas/rheology_training_data/
-output_path: /data/users/max.thomas/rheology_training_data/
+raw_data_path: $DATADIR/rheology_training_data/
+output_path: $DATADIR/max.thomas/rheology_training_data/
 files:
   - dq557o_1ts_19760101_19760101_icemod_19760101-19760101.nc
 features: ['sithic', 'sivolu', 'siconc', 'sivpnd', 'sivelu', 'sivelv', 'sivelo', 'utau_ai', 'vtau_ai', 'utau_oi', 'vtau_oi', 'sidive', 'sishea', 'sistre', 'normstr', 'sheastr']

@@ -1,6 +1,6 @@
 data_label: evp_120itr_12day
-raw_data_path: /data/scratch/max.thomas/rheology_training_data/
-output_path: /data/users/max.thomas/rheology_training_data/
+raw_data_path: $DATADIR/rheology_training_data/
+output_path: $DATADIR/max.thomas/rheology_training_data/
 files:
   - dq557o_1ts_19760101_19760101_icemod_19760101-19760101.nc
   - dq557o_1ts_19760201_19760201_icemod_19760201-19760201.nc
