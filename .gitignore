@@ -13,3 +13,4 @@ code/src/*.pkl*
 code/raw_retrieval/*
 
 results
+data/**/*

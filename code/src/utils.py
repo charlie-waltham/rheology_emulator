@@ -187,15 +187,13 @@ def make_validation(train_X, train_y, validation_fraction):
 
     return train_X, train_y, val_X, val_y
 
-def define_nn(architecture, n_features, n_labels):
+def define_nn(architecture, n_features, n_labels, device):
     layer_list = nn_layer_list(architecture)
     layer_list = match_io_dims(layer_list, n_features, n_labels)
     model = build_model_from_layers(layer_list)
     # Parallelize model if multiple GPUs are available
     if torch.cuda.device_count() > 1:
         model = torch.nn.DataParallel(model)
-    #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    device = torch.device("cpu")
     model = model.to(device)
     return model
 

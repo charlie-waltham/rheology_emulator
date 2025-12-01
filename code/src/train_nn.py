@@ -12,70 +12,8 @@ import torch.nn as nn
 import torch.optim as optim
 import pandas as pd
 
-
 # import ordinary least squares regression
 from sklearn.linear_model import LinearRegression
-
-# from .dataset_utils import TorchDataManager
-
-# def nn_layer_list(config_path='../configs/nn_architecture/base.yaml'):
-#     with open(config_path, "r") as f:
-#         config = yaml.safe_load(f)['model']
-#     layer_list = []
-#     for item in config:
-#         layer_list.append([config[item]['type'], config[item]['args']])
-#     return layer_list
-
-# def match_io_dims(layer_list, n_features, n_labels):
-#     layer_list[0][1][0] = n_features  # Set input dimension of the first layer
-#     layer_list[-1][1][1] = n_labels  # Set output dimension of the last layer
-#     return layer_list
-
-# def build_model_from_layers(layer_list):
-#     # Create a list to hold the layers
-#     layers = []
-
-#     # Iterate through the layer definitions
-#     for layer_type, args in layer_list:
-#         # Get the layer class from nn
-#         layer_class = getattr(torch.nn, layer_type)
-#         # Instantiate the layer with the provided arguments
-#         layers.append(layer_class(*args))
-
-#     # Create the neural network using nn.Sequential
-#     model = torch.nn.Sequential(*layers)
-
-#     # Print the model
-#     logging.info('Neural net architecture:')
-#     logging.info(model)
-
-#     return model
-
-# def nn_options(model, parameters='../configs/parameters/nn_base.yaml'):
-#     """
-#     Define the loss function, optimizer, and number of epochs based on a YAML configuration.
-#     """
-#     if parameters is None:
-#         raise ValueError("An architecture YAML file must be provided.")
-
-#     # Load the YAML configuration
-#     with open(parameters, "r") as f:
-#         config = yaml.safe_load(f)
-
-#     # Define the loss function
-#     loss_type = config.get("loss", "MSELoss")  # Default to MSELoss if not specified
-#     criterion = getattr(nn, loss_type)()
-
-#     # Define the optimizer
-#     optimizer_type = config.get("optimizer", "Adam")  # Default to Adam if not specified
-#     lr = config.get("learning_rate", 0.001)  # Default learning rate
-#     optimizer_class = getattr(optim, optimizer_type)
-#     optimizer = optimizer_class(model.parameters(), lr=lr)
-
-#     # Define the number of epochs
-#     n_epochs = config.get("epochs", 10)  # Default to 10 epochs
-
-#     return criterion, optimizer, n_epochs
 
 def setup_logging(log_file='train_nn.log'):
     """
@@ -114,13 +52,17 @@ class NNCapsule:
             self.test_loader = self.data_manager.test_loader
 
         self.scaler = self.data_manager.scaler
+        self.label_scaler = self.data_manager.label_vel_scaler
+
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cpu")  # Force CPU for debugging
 
         # Define model
         self.architecture = arguments['architecture']
         #self.parameters = arguments['parameters']
         # TODO: this is clunky and params should be wrapped up into arguments
         self.parameters = '../configs/training/' + arguments['training_cfg'] + '.yaml'
-        self.model = utils.define_nn(self.architecture, self.n_features, self.n_labels)
+        self.model = utils.define_nn(self.architecture, self.n_features, self.n_labels, self.device)
         # TODO: split the below up so that they're called separately, or do some order agnostic unpacking of all the parameters
         self.criterion, self.optimizer, self.n_epochs = utils.nn_options(self.model, self.parameters)
         self.train_losses = []
@@ -139,26 +81,13 @@ class NNCapsule:
         logging.info(f"Number of batches: {self.n_batches}")
         logging.info(f"Number of features: {self.n_features}")
         logging.info(f"Number of labels: {self.n_labels}")
-    
-
-    # def _define_nn(self):
-    #     layer_list = nn_layer_list(self.architecture)
-    #     layer_list = match_io_dims(layer_list, self.n_features, self.n_labels)
-    #     model = build_model_from_layers(layer_list)
-    #     # Parallelize model if multiple GPUs are available
-    #     if torch.cuda.device_count() > 1:
-    #         logging.info(f"Using {torch.cuda.device_count()} GPUs for DataParallel")
-    #         model = torch.nn.DataParallel(model)
-    #     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    #     model = model.to(device)
-    #     return model
 
     def train(self):
         for epoch in range(self.n_epochs):
             self.model.train()
             running_loss = 0.0
             for inputs, targets in self.train_loader:
-                # inputs, targets = inputs.to(device), targets.to(device)
+                inputs, targets = inputs.to(self.device), targets.to(self.device)
                 self.optimizer.zero_grad()
                 outputs = self.model(inputs)
                 loss = self.criterion(outputs, targets)
@@ -172,7 +101,7 @@ class NNCapsule:
             val_loss = 0.0
             with torch.no_grad():
                 for inputs, targets in self.val_loader:
-                    # inputs, targets = inputs.to(device), targets.to(device)
+                    inputs, targets = inputs.to(self.device), targets.to(self.device)
                     outputs = self.model(inputs)
                     loss = self.criterion(outputs, targets)
                     val_loss += loss.item()
@@ -185,14 +114,14 @@ class NNCapsule:
 
     def plot_train_losses(self, train_losses, val_losses):
 
-        ylims = [0, np.median(train_losses)*4]
+        #ylims = [0, np.median(train_losses)*4]
 
         fig = plt.figure(figsize=(5, 5))
         plt.plot(train_losses, label='Train Loss')
         plt.plot(val_losses, label='Validation Loss')
         plt.xlabel('Epochs')
         plt.ylabel('Loss')
-        plt.ylim(ylims)
+        #plt.ylim(ylims)
         plt.legend()
         # TODO: replace show with some saving option
         plt.savefig(self.arguments['results_path'] + 'train_losses.png')
@@ -204,16 +133,22 @@ class NNCapsule:
         true_values = []
         with torch.no_grad():  # Disable gradient tracking
             for inputs, targets in loader:
-                #inputs = inputs.to(device)
+                inputs = inputs.to(self.device)
                 outputs = self.model(inputs)
-                # predictions.append(outputs.cpu())
-                # true_values.append(targets.cpu())
                 predictions.append(outputs)
                 true_values.append(targets)
 
         # Concatenate all batches into single tensors
-        predictions = torch.cat(predictions, dim=0)
-        true_values = torch.cat(true_values, dim=0)
+        predictions = torch.cat(predictions, dim=0).to("cpu")
+        true_values = torch.cat(true_values, dim=0).to("cpu")
+
+        # Unscale the true values and predictions
+        if (self.data_manager.scale):
+            predictions = self.label_scaler.inverse_transform(predictions)
+            true_values = self.label_scaler.inverse_transform(true_values)
+
+            predictions = torch.tensor(predictions)
+            true_values = torch.tensor(true_values)
 
         return true_values, predictions
     
@@ -223,26 +158,27 @@ class NNCapsule:
         inputs_list = []
         with torch.no_grad():  # Disable gradient tracking
             for inputs, targets in loader:
-                #inputs = inputs.to(device)
+                inputs = inputs.to(self.device)
                 outputs = self.model(inputs)
-                # predictions.append(outputs.cpu())
-                # true_values.append(targets.cpu())
                 predictions.append(outputs)
                 true_values.append(targets)
                 inputs_list.append(inputs)
 
         # Concatenate all batches into single tensors
-        predictions = torch.cat(predictions, dim=0)
-        true_values = torch.cat(true_values, dim=0)
-        inputs_all = torch.cat(inputs_list, dim=0)
+        predictions = torch.cat(predictions, dim=0).to("cpu")
+        true_values = torch.cat(true_values, dim=0).to("cpu")
+        inputs_all = torch.cat(inputs_list, dim=0).to("cpu")
 
-        # Unscale the inputs
-        inputs_all = self.scaler.inverse_transform(inputs_all)
+        # Unscale the true values, predictions and inputs
+        if (self.data_manager.scale):
+            predictions = torch.tensor(self.label_scaler.inverse_transform(predictions))
+            true_values = torch.tensor(self.label_scaler.inverse_transform(true_values))
+            inputs_all = self.scaler.inverse_transform(inputs_all)
 
         # Save to a CSV file
         df = pd.DataFrame({
-            'True Values': true_values.numpy().flatten(),
-            'Predictions': predictions.numpy().flatten()
+            'True Values': true_values.numpy()[:, 0].flatten(),
+            'Predictions': predictions.numpy()[:, 0].flatten()
         })
         # Add input features to the dataframe
         for i in range(inputs_all.shape[1]):
@@ -251,13 +187,18 @@ class NNCapsule:
         df.to_csv(path, index=False)
         logging.info(f"True values, predictions, and inputs saved to {path}")
     
-
     def evaluation_figure(self, loader='val', ax_reduce=0.5, n_bins=50):
 
         if loader == 'val':
             true_values, predictions = self.ytrue_ypred(self.val_loader)
         elif loader == 'train':
             true_values, predictions = self.ytrue_ypred(self.train_loader)
+        
+        # Select only the first label for eval
+        if self.n_labels > 1:
+            true_values = true_values[:, 0].unsqueeze(1)
+            predictions = predictions[:, 0].unsqueeze(1)
+
         # TODO: enable test loader
         # elif loader == 'test':
         #     true_values, predictions = self.ytrue_ypred(self.test_loader)
@@ -284,9 +225,13 @@ class NNCapsule:
         axmax = max(true_values.max(), predictions.max())
         plt.ylim(axmin*ax_reduce, axmax*ax_reduce)
         plt.xlim(axmin*ax_reduce, axmax*ax_reduce)
+
         mse = torch.nn.functional.mse_loss(predictions, true_values)
+        persistence_mse = torch.nn.functional.mse_loss(torch.zeros_like(true_values), true_values)
         rmse_cms = torch.sqrt(mse) * 100  # Convert to cm/s
-        plt.title(f'RMSE: {rmse_cms:.2e} cm/s, Gradient: {gradient:.4f}')
+        skill = 1 - (mse / persistence_mse)
+
+        plt.title(f'RMSE: {rmse_cms:.2e} cm/s, Skill: {skill:.3f}, Gradient: {gradient:.4f}')
         plt.legend()
 
         plt.subplot(2, 1, 2)

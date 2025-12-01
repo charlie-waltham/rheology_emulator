@@ -1,12 +1,9 @@
-# First look with new data format (long list of features/labels)
-
 # Paths, relative to /code where main.py is run
 pairs_path: ../data/raw/shortevp.zarr
 parameters: ../configs/parameters/nn_base.yaml
-results_path: ../results/nn/dv/0/
+results_path: ../results/nn/charlie/mlp-100itr/
 architecture: ../configs/nn_architecture/it_2L.yaml
 
-# TODO: add batch size, scaler, val frac
 train_features: ['siconc', 'sithic', 'sivelv', 'sivelu', 'utau_ai', 'utau_oi', 'vtau_ai', 'vtau_oi']
 train_labels: ['sivelv', 'sivelu']
 
@@ -17,7 +14,7 @@ scale_features: True
 loss: MSELoss
 optimizer: Adam
 learning_rate: 0.001
-epochs: 15
+epochs: 100
 batch_size: 64
 
 test_fraction: 0.01 # deliberately very small as test data aren't used at this stage

@@ -33,7 +33,7 @@ def parse_arguments():
     parser.add_argument('--batch_size', type=int, default=64, help="Batch size for training")
     parser.add_argument('--val_fraction', type=float, default=0.2, help="Fraction of data to use for validation")
     parser.add_argument('--test_fraction', type=float, default=0.1, help="Fraction of data to use for testing")
-    parser.add_argument('--scale_features', action='store_true', default=True, help="Enable feature scaling for training")
+    parser.add_argument('--scale_features', action='store_true', default=True, help="Enable feature and label scaling for training")
     parser.add_argument('--architecture', type=int, default=0, help="Full path to yaml with architecture")
     parser.add_argument('--shorten_dataset', type=int, default=None, help="Whether to shorten the dataset to 10,000 samples for quick testing/debugging")
     parser.add_argument('--sequential', action='store_true', default=False, help="Whether to use sequential data loading (for RNNs)")
@@ -88,7 +88,6 @@ def setup_results(args):
 
 
 def train_model(args):
-
     # Setup logging for training
     setup_logging(log_file='train_model.log')  # Set up logging
 
@@ -111,14 +110,13 @@ def train_model(args):
     logging.info("Training model...")
     from src.train_nn import train_save_eval
     train_save_eval(args)
+    logging.shutdown()
 
     # Move log file to results directory
-    shutil.copy('train_model.log', args['results_path']+'train_model.log')
+    shutil.move('train_model.log', args['results_path']+'train_model.log')
     shutil.copy(args['training_config_path'], args['results_path']+'used_training_config.yaml')
-    os.remove('train_model.log')  # Clean up log file after copying
 
 def main():
-    
     args = parse_arguments()
 
     # Set the random seed for reproducibility
@@ -140,6 +138,5 @@ def main():
         
 
 if __name__ == "__main__":
-    
     main()
         
