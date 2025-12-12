@@ -11,6 +11,10 @@ from pathlib import Path
 import torch.nn as nn
 import torch.optim as optim
 import pandas as pd
+import matplotlib.path as mpath
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
+
 
 # import ordinary least squares regression
 from sklearn.linear_model import LinearRegression
@@ -247,6 +251,62 @@ class NNCapsule:
         plt.savefig(self.arguments['results_path'] + f'evaluation_{loader}.png')
 
         logging.info(f"Evaluation figure for {loader} set saved.")
+
+    def plot_north_polar_map(self, loader='val', stride_base=800_000):
+        if loader == 'val':
+            true_values, predictions = self.ytrue_ypred(self.val_loader)
+            indices = self.val_loader.dataset.indices
+        elif loader == 'train':
+            true_values, predictions = self.ytrue_ypred(self.train_loader)
+            indices = self.train_loader.dataset.indices
+        
+        # Select only the first label for eval
+        if self.n_labels > 1:
+            true_values = true_values[:, 0].unsqueeze(1)
+            predictions = predictions[:, 0].unsqueeze(1)
+        
+        da = self.data_manager.raw_data.isel(z=indices)
+
+        stride = max(1, true_values.shape[0] // stride_base)
+        logging.info(f"Using stride of {stride} for sampling")
+
+        vals = torch.nn.functional.l1_loss(predictions, true_values, reduction='none').numpy()[::stride]
+        lats = da.coords['lat'].values[::stride]
+        lons = da.coords['lon'].values[::stride]
+
+        fig = plt.figure(figsize=(10, 8))
+
+        projection = ccrs.NorthPolarStereo()
+        ax = plt.axes(projection=projection)
+        ax.set_extent([-180, 180, 50, 90], ccrs.PlateCarree())
+
+        ax.add_feature(cfeature.LAND, zorder=1, facecolor='gray')
+        ax.coastlines(resolution='110m', zorder=2)
+        ax.gridlines()
+
+        theta = np.linspace(0, 2*np.pi, 100)
+        center, radius = [0.5, 0.5], 0.5
+        verts = np.vstack([np.sin(theta), np.cos(theta)]).T
+        circle = mpath.Path(verts * radius + center)
+        ax.set_boundary(circle, transform=ax.transAxes)
+
+        hb = ax.hexbin(
+            lons, lats,
+            C=vals,
+            gridsize=500,
+            cmap='viridis',
+            transform=ccrs.PlateCarree(),
+            reduce_C_function=np.mean,
+            mincnt=1
+        )
+
+        cbar = plt.colorbar(hb, ax=ax, orientation='vertical', shrink=0.8, pad=0.05)
+        cbar.set_label('Sea Ice Velocity MAE')
+
+        plt.title("Sea Ice Velocity MAE Map")
+        fig.savefig(self.arguments['results_path'] + f'map_{loader}.png', dpi=300)
+
+        logging.info(f"MAE map for {loader} set saved.")
     
     def save_model(self, path):
 
@@ -270,6 +330,7 @@ def train_save_eval(arguments):
 
     nn_capsule.plot_train_losses(nn_capsule.train_losses, nn_capsule.val_losses)
     nn_capsule.evaluation_figure('train')
+    nn_capsule.plot_north_polar_map('train')
 
     nn_capsule.save_model(arguments['results_path'] + 'nn_model_recreator.pkl')
 
