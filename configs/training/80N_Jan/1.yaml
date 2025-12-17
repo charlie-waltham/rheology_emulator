@@ -1,10 +1,11 @@
-# 0 - best attempt at v(t+1) from X(t)
+# Emulating 1200 itr EVP model outputs for latitudes > 80N in January predicting sivelv(t+1)-sivelv(t)
+# 1: larger dataset (~100k samples) than 0
 
 # Paths, relative to /code where main.py is run
-pairs_path: ../data/raw/shortevp.zarr
+pairs_path: ../data/raw/evp_1200itr_80N_Jan.zarr
 # pairs_path: ../data/raw/evp_1200itr_fmt2.zarr
 parameters: ../configs/parameters/nn_base.yaml
-results_path: ../results/nn/poster/0/
+results_path: ../results/nn/80N_Jan/1/
 architecture: ../configs/nn_architecture/it_3L.yaml
 save_data: True
 
@@ -13,10 +14,10 @@ train_features: ['sivelv', 'siconc', 'sithic', 'sivelu', 'utau_ai', 'utau_oi', '
 #train_features: ['sivelv']
 train_labels: ['sivelv']
 
-difference_labels: False
+difference_labels: True
 zarr_fmt: fmt2
 scale_features: True
-shorten_dataset: 10000
+shorten_dataset: 100000
 sequential: True
 save_val: True
 
@@ -25,4 +26,4 @@ optimizer: Adam
 learning_rate: 0.001
 epochs: 30
 
-test_fraction: 0.1 # 
+test_fraction: 0.001 # 

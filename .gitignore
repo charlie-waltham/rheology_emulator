@@ -1,6 +1,11 @@
 **__pycache__**
 **junk**
 
+data/raw/**
+data/intermediate/**
+
+results/**
+
 code/*.ipynb*
 code/*.nc*
 code/*.pkl*
