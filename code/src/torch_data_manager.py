@@ -19,8 +19,8 @@ class TorchDataManager:
         self.val_fraction = arguments['val_fraction']
         self.test_fraction = arguments['test_fraction']
         self.scale = arguments['scale_features']
-        self.scale_factor_features = 2
-        self.scale_factor_labels = 20
+        self.scale_factor_features = 10
+        self.scale_factor_labels = 100
         self.train_features = arguments['train_features']
         self.train_labels = arguments['train_labels']
         self.difference_labels = difference_labels
@@ -113,16 +113,16 @@ class TorchDataManager:
     def _scale(self):
         # Define a custom scaler for velocity values
         self.feature_vel_scaler = Pipeline([
-            ('arcsinh', FunctionTransformer(func=self._arcsinh_scaled,
-                                            inverse_func=self._sinh_scaled,
+            ('log', FunctionTransformer(func=self._log_scaled,
+                                            inverse_func=self._exp_scaled,
                                             validate=True,
                                             kw_args={'scale_factor': self.scale_factor_features},
                                             inv_kw_args={'scale_factor': self.scale_factor_features})),
             ('scaler', MaxAbsScaler())
         ])
         self.label_vel_scaler = Pipeline([
-            ('arcsinh', FunctionTransformer(func=self._arcsinh_scaled,
-                                            inverse_func=self._sinh_scaled,
+            ('log', FunctionTransformer(func=self._log_scaled,
+                                            inverse_func=self._exp_scaled,
                                             validate=True,
                                             kw_args={'scale_factor': self.scale_factor_labels},
                                             inv_kw_args={'scale_factor': self.scale_factor_labels})),
@@ -151,6 +151,11 @@ class TorchDataManager:
         return np.arcsinh(x * scale_factor)
     def _sinh_scaled(self, x, scale_factor=2):
         return np.sinh(x) / scale_factor
+    
+    def _log_scaled(self, x, scale_factor=1):
+        return np.sign(x) * np.log1p(np.abs(x) * scale_factor)
+    def _exp_scaled(self, x, scale_factor=1):
+        return np.sign(x) * (np.expm1(np.abs(x)) / scale_factor)
 
     def save_datasets(self, save_path):
         # Save the datasets to the specified path

@@ -1,7 +1,7 @@
 # Paths, relative to /code where main.py is run
-pairs_path: ../data/processed/high_arctic/1.zarr
-parameters: ../configs/parameters/nn_base.yaml
-results_path: ../results/nn/charlie/arctic/1/
+pairs_path: ../data/processed/arctic/80deg.zarr
+parameters: ../configs/parameters/nn_focal.yaml
+results_path: ../results/nn/charlie/arctic/80deg/
 architecture: ../configs/nn_architecture/it_2L.yaml
 
 train_features: ['siconc', 'sithic', 'sivelv', 'sivelu', 'utau_ai', 'utau_oi', 'vtau_ai', 'vtau_oi']
@@ -11,12 +11,7 @@ difference_labels: True
 zarr_fmt: fmt2
 scale_features: True
 
-loss: MSELoss
-optimizer: Adam
-learning_rate: 0.001
-epochs: 5
 batch_size: 64
+shorten_dataset: 100000
 
 test_fraction: 0.01 # deliberately very small as test data aren't used at this stage
-
-hemisphere: north

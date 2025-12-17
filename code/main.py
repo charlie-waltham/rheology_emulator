@@ -24,6 +24,7 @@ def parse_arguments():
 
     # Run configuration file
     parser.add_argument('--training_cfg', type=str, help="Name of the training configuration file to load")
+    parser.add_argument('--parameters', type=str, help="Name of the parameters file to load")
 
     # Optional arguments for training
     parser.add_argument('--zarr_fmt', type=str, default='fmt1', help="fmt1: zarr with separate pairs (via make_pairs.py), fmt2: zarr with concatonated pairs (via make_pairs_2.py)")
@@ -37,6 +38,7 @@ def parse_arguments():
     parser.add_argument('--architecture', type=int, default=0, help="Full path to yaml with architecture")
     parser.add_argument('--shorten_dataset', type=int, default=None, help="Whether to shorten the dataset to 10,000 samples for quick testing/debugging")
     parser.add_argument('--sequential', action='store_true', default=False, help="Whether to use sequential data loading (for RNNs)")
+    parser.add_argument('--hemisphere', type=str, default="north", help="Hemisphere to plot MAE maps for")
 
     return vars(parser.parse_args())
 

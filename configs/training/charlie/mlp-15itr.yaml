@@ -18,3 +18,5 @@ epochs: 15
 batch_size: 64
 
 test_fraction: 0.01 # deliberately very small as test data aren't used at this stage
+
+hemisphere: south

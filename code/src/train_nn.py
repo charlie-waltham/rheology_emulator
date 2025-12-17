@@ -1,20 +1,19 @@
 import torch
-import yaml
 import logging
 import pickle
-
-from . import utils
-
-import matplotlib.pyplot as plt
-import numpy as np
 from pathlib import Path
-import torch.nn as nn
-import torch.optim as optim
+
 import pandas as pd
+import matplotlib.pyplot as plt
 import matplotlib.path as mpath
+import matplotlib.colors as colors
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+import numpy as np
+from scipy.interpolate import griddata
+from scipy.spatial import cKDTree
 
+from . import utils
 
 # import ordinary least squares regression
 from sklearn.linear_model import LinearRegression
@@ -23,7 +22,6 @@ def setup_logging(log_file='train_nn.log'):
     """
     Set up logging to a file.
     """
-    import logging
     logging.basicConfig(filename=log_file, level=logging.INFO,
                         format='%(asctime)s - %(levelname)s - %(message)s')
     logging.info("Logging setup complete.")
@@ -55,17 +53,21 @@ class NNCapsule:
             self.val_loader = self.data_manager.val_loader
             self.test_loader = self.data_manager.test_loader
 
-        self.scaler = self.data_manager.scaler
-        self.label_scaler = self.data_manager.label_vel_scaler
+        if self.data_manager.scale:
+            self.scaler = self.data_manager.scaler
+            self.label_scaler = self.data_manager.label_vel_scaler
+        else:
+            self.scaler = None
+            self.label_scaler = None
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.device = torch.device("cpu")  # Force CPU for debugging
 
         # Define model
         self.architecture = arguments['architecture']
-        #self.parameters = arguments['parameters']
+        self.parameters = arguments['parameters']
         # TODO: this is clunky and params should be wrapped up into arguments
-        self.parameters = '../configs/training/' + arguments['training_cfg'] + '.yaml'
+        #self.parameters = '../configs/training/' + arguments['training_cfg'] + '.yaml'
         self.model = utils.define_nn(self.architecture, self.n_features, self.n_labels, self.device)
         # TODO: split the below up so that they're called separately, or do some order agnostic unpacking of all the parameters
         self.criterion, self.optimizer, self.n_epochs = utils.nn_options(self.model, self.parameters)
@@ -240,11 +242,11 @@ class NNCapsule:
 
         plt.subplot(2, 1, 2)
         bin_edges = np.linspace(axmin, axmax, n_bins + 1)
-        plt.hist(true_values, bins=bin_edges, alpha=0.5, label='True Values', color='blue', density=True)
-        plt.hist(predictions, bins=bin_edges, alpha=0.5, label='Predictions', color='orange', density=True)
+        plt.hist(true_values, bins=bin_edges, alpha=0.5, label='True Values', color='blue', log=True)
+        plt.hist(predictions, bins=bin_edges, alpha=0.5, label='Predictions', color='orange', log=True)
         plt.xlabel('Values')
         plt.ylabel('Counts')
-        plt.title('Normalised histogram of True Values and Predictions')
+        plt.title('Histogram of True Values and Predictions')
         plt.legend()
 
         plt.tight_layout()
@@ -252,7 +254,7 @@ class NNCapsule:
 
         logging.info(f"Evaluation figure for {loader} set saved.")
 
-    def plot_north_polar_map(self, loader='val', stride_base=800_000):
+    def plot_polar_map(self, loader='val', stride_base=800_000, hemisphere="north", resolution=500, abs_lat_cutoff=60):
         if loader == 'val':
             true_values, predictions = self.ytrue_ypred(self.val_loader)
             indices = self.val_loader.dataset.indices
@@ -260,52 +262,83 @@ class NNCapsule:
             true_values, predictions = self.ytrue_ypred(self.train_loader)
             indices = self.train_loader.dataset.indices
         
-        # Select only the first label for eval
+        # Select only the first label for eval (i.e. sivelv)
         if self.n_labels > 1:
-            true_values = true_values[:, 0].unsqueeze(1)
-            predictions = predictions[:, 0].unsqueeze(1)
+            true_values = true_values[:, 0]
+            predictions = predictions[:, 0]
         
         da = self.data_manager.raw_data.isel(z=indices)
 
         stride = max(1, true_values.shape[0] // stride_base)
         logging.info(f"Using stride of {stride} for sampling")
 
-        vals = torch.nn.functional.l1_loss(predictions, true_values, reduction='none').numpy()[::stride]
-        lats = da.coords['lat'].values[::stride]
-        lons = da.coords['lon'].values[::stride]
+        mae = torch.nn.functional.l1_loss(predictions, true_values, reduction='none').numpy()[::stride]
+        lat = da.coords['lat'].values[::stride]
+        lon = da.coords['lon'].values[::stride]
 
+        if hemisphere == "south":
+            projection = ccrs.SouthPolarStereo()
+            extent = [-180, 180, -abs_lat_cutoff, -90]
+        else:
+            projection = ccrs.NorthPolarStereo()
+            extent = [-180, 180, abs_lat_cutoff, 90]
+        
+        # Source coord system is lon/lat
+        src_crs = ccrs.PlateCarree()
+
+        # Transform to meters
+        coords_proj = projection.transform_points(src_crs, lon, lat)
+        x_points = coords_proj[:, 0]
+        y_points = coords_proj[:, 1]
+
+        grid_x_2d, grid_y_2d = np.meshgrid(
+            np.linspace(-4000000, 4000000, resolution),
+            np.linspace(-4000000, 4000000, resolution)
+        )
+
+        grid_interpolated = griddata(
+            (x_points, y_points),
+            mae,
+            (grid_x_2d, grid_y_2d),
+            method='linear'
+        )
+
+        # Mask points that are threshold_meters from any datapoint
+        threshold_meters = 50000
+
+        tree = cKDTree(np.column_stack((x_points, y_points)))
+        grid_pixels = np.column_stack((grid_x_2d.ravel(), grid_y_2d.ravel()))
+        dist, _ = tree.query(grid_pixels)
+        dist = dist.reshape(grid_x_2d.shape)
+        grid_interpolated[dist > threshold_meters] = np.nan
+
+        # Create plot and add coastlines
         fig = plt.figure(figsize=(10, 8))
-
-        projection = ccrs.NorthPolarStereo()
         ax = plt.axes(projection=projection)
-        ax.set_extent([-180, 180, 50, 90], ccrs.PlateCarree())
-
-        ax.add_feature(cfeature.LAND, zorder=1, facecolor='gray')
-        ax.coastlines(resolution='110m', zorder=2)
+        ax.set_extent(extent, src_crs)
+        ax.add_feature(cfeature.LAND, zorder=2, facecolor='gray')
         ax.gridlines()
 
+        # Create circular boundary
         theta = np.linspace(0, 2*np.pi, 100)
         center, radius = [0.5, 0.5], 0.5
         verts = np.vstack([np.sin(theta), np.cos(theta)]).T
         circle = mpath.Path(verts * radius + center)
         ax.set_boundary(circle, transform=ax.transAxes)
 
-        hb = ax.hexbin(
-            lons, lats,
-            C=vals,
-            gridsize=500,
+        mesh = ax.pcolormesh(
+            grid_x_2d, grid_y_2d, 
+            grid_interpolated,
+            transform=projection,
+            norm=colors.LogNorm(),
             cmap='viridis',
-            transform=ccrs.PlateCarree(),
-            reduce_C_function=np.mean,
-            mincnt=1
+            shading='auto'
         )
 
-        cbar = plt.colorbar(hb, ax=ax, orientation='vertical', shrink=0.8, pad=0.05)
-        cbar.set_label('Sea Ice Velocity MAE')
-
+        plt.colorbar(mesh, ax=ax, label='Mean Absolute Error (m/s)')
         plt.title("Sea Ice Velocity MAE Map")
-        fig.savefig(self.arguments['results_path'] + f'map_{loader}.png', dpi=300)
 
+        fig.savefig(self.arguments['results_path'] + f'map_{loader}.png', dpi=300)
         logging.info(f"MAE map for {loader} set saved.")
     
     def save_model(self, path):
@@ -329,8 +362,8 @@ def train_save_eval(arguments):
     nn_capsule.train()
 
     nn_capsule.plot_train_losses(nn_capsule.train_losses, nn_capsule.val_losses)
-    nn_capsule.evaluation_figure('train')
-    nn_capsule.plot_north_polar_map('train')
+    nn_capsule.evaluation_figure('train', ax_reduce=0.25, n_bins=200)
+    nn_capsule.plot_polar_map('train', hemisphere=arguments['hemisphere'], abs_lat_cutoff=75)
 
     nn_capsule.save_model(arguments['results_path'] + 'nn_model_recreator.pkl')
 
