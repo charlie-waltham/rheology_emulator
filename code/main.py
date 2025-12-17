@@ -16,6 +16,7 @@ def parse_arguments():
 
     parser.add_argument('--train', action='store_true', help="Enable training mode")
     parser.add_argument('--evaluate', action='store_true', help="Enable evaluation mode")
+    parser.add_argument('--csv_path', type=str, default=None, help="Path to CSV with 'True Values' and 'Predictions' (defaults to results_path/ytrue_ypred_val.csv)")
 
     parser.add_argument('--save_data', type=bool, default=False, help="Whether to save the training, validation, and test datasets after splitting")
     parser.add_argument('--save_val', type=bool, default=False, help="Whether to save the validation ytrue, ypred, and inputs after training")
@@ -136,7 +137,21 @@ def main():
 
     # TODO: write eval code to work on test set
     elif args['evaluate']:
-        print('Need to write eval code!')
+        if not args['results_path']:
+            print("Error: --results_path must be provided for evaluation.")
+            return
+
+        csv_path = args['csv_path'] if args['csv_path'] else os.path.join(args['results_path'], 'ytrue_ypred_val.csv')
+        if not os.path.exists(csv_path):
+            print(f"Error: CSV not found at {csv_path}")
+            return
+
+        from src.evaluate import evaluate_and_save
+
+        saved = evaluate_and_save(csv_path, args['results_path'])
+        print("Saved figures:")
+        for name, path in saved.items():
+            print(f"  {name}: {path}")
         
 
 if __name__ == "__main__":
