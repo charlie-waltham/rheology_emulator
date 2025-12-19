@@ -1,17 +1,11 @@
 import torch
+
 import logging
 import pickle
-from pathlib import Path
 
 import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.path as mpath
-import matplotlib.colors as colors
-import cartopy.crs as ccrs
-import cartopy.feature as cfeature
 import numpy as np
-from scipy.interpolate import griddata
-from scipy.spatial import cKDTree
+import matplotlib.pyplot as plt
 
 from . import utils
 
@@ -175,6 +169,8 @@ class NNCapsule:
         true_values = torch.cat(true_values, dim=0).to("cpu")
         inputs_all = torch.cat(inputs_list, dim=0).to("cpu")
 
+        indices = loader.dataset.indices
+
         # Unscale the true values, predictions and inputs
         if (self.data_manager.scale):
             predictions = torch.tensor(self.label_scaler.inverse_transform(predictions))
@@ -184,7 +180,8 @@ class NNCapsule:
         # Save to a CSV file
         df = pd.DataFrame({
             'True Values': true_values.numpy()[:, 0].flatten(),
-            'Predictions': predictions.numpy()[:, 0].flatten()
+            'Predictions': predictions.numpy()[:, 0].flatten(),
+            'Dataset Indices': indices
         })
         # Add input features to the dataframe
         for i in range(inputs_all.shape[1]):
@@ -253,93 +250,6 @@ class NNCapsule:
         plt.savefig(self.arguments['results_path'] + f'evaluation_{loader}.png')
 
         logging.info(f"Evaluation figure for {loader} set saved.")
-
-    def plot_polar_map(self, loader='val', stride_base=800_000, hemisphere="north", resolution=500, abs_lat_cutoff=60):
-        if loader == 'val':
-            true_values, predictions = self.ytrue_ypred(self.val_loader)
-            indices = self.val_loader.dataset.indices
-        elif loader == 'train':
-            true_values, predictions = self.ytrue_ypred(self.train_loader)
-            indices = self.train_loader.dataset.indices
-        
-        # Select only the first label for eval (i.e. sivelv)
-        if self.n_labels > 1:
-            true_values = true_values[:, 0]
-            predictions = predictions[:, 0]
-        
-        da = self.data_manager.raw_data.isel(z=indices)
-
-        stride = max(1, true_values.shape[0] // stride_base)
-        logging.info(f"Using stride of {stride} for sampling")
-
-        mae = torch.nn.functional.l1_loss(predictions, true_values, reduction='none').numpy()[::stride]
-        lat = da.coords['lat'].values[::stride]
-        lon = da.coords['lon'].values[::stride]
-
-        if hemisphere == "south":
-            projection = ccrs.SouthPolarStereo()
-            extent = [-180, 180, -abs_lat_cutoff, -90]
-        else:
-            projection = ccrs.NorthPolarStereo()
-            extent = [-180, 180, abs_lat_cutoff, 90]
-        
-        # Source coord system is lon/lat
-        src_crs = ccrs.PlateCarree()
-
-        # Transform to meters
-        coords_proj = projection.transform_points(src_crs, lon, lat)
-        x_points = coords_proj[:, 0]
-        y_points = coords_proj[:, 1]
-
-        grid_x_2d, grid_y_2d = np.meshgrid(
-            np.linspace(-4000000, 4000000, resolution),
-            np.linspace(-4000000, 4000000, resolution)
-        )
-
-        grid_interpolated = griddata(
-            (x_points, y_points),
-            mae,
-            (grid_x_2d, grid_y_2d),
-            method='linear'
-        )
-
-        # Mask points that are threshold_meters from any datapoint
-        threshold_meters = 50000
-
-        tree = cKDTree(np.column_stack((x_points, y_points)))
-        grid_pixels = np.column_stack((grid_x_2d.ravel(), grid_y_2d.ravel()))
-        dist, _ = tree.query(grid_pixels)
-        dist = dist.reshape(grid_x_2d.shape)
-        grid_interpolated[dist > threshold_meters] = np.nan
-
-        # Create plot and add coastlines
-        fig = plt.figure(figsize=(10, 8))
-        ax = plt.axes(projection=projection)
-        ax.set_extent(extent, src_crs)
-        ax.add_feature(cfeature.LAND, zorder=2, facecolor='gray')
-        ax.gridlines()
-
-        # Create circular boundary
-        theta = np.linspace(0, 2*np.pi, 100)
-        center, radius = [0.5, 0.5], 0.5
-        verts = np.vstack([np.sin(theta), np.cos(theta)]).T
-        circle = mpath.Path(verts * radius + center)
-        ax.set_boundary(circle, transform=ax.transAxes)
-
-        mesh = ax.pcolormesh(
-            grid_x_2d, grid_y_2d, 
-            grid_interpolated,
-            transform=projection,
-            norm=colors.LogNorm(),
-            cmap='viridis',
-            shading='auto'
-        )
-
-        plt.colorbar(mesh, ax=ax, label='Mean Absolute Error (m/s)')
-        plt.title("Sea Ice Velocity MAE Map")
-
-        fig.savefig(self.arguments['results_path'] + f'map_{loader}.png', dpi=300)
-        logging.info(f"MAE map for {loader} set saved.")
     
     def save_model(self, path):
 
@@ -363,7 +273,6 @@ def train_save_eval(arguments):
 
     nn_capsule.plot_train_losses(nn_capsule.train_losses, nn_capsule.val_losses)
     nn_capsule.evaluation_figure('train', ax_reduce=0.25, n_bins=200)
-    nn_capsule.plot_polar_map('train', hemisphere=arguments['hemisphere'], abs_lat_cutoff=75)
 
     nn_capsule.save_model(arguments['results_path'] + 'nn_model_recreator.pkl')
 

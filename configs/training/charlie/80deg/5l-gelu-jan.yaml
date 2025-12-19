@@ -1,8 +1,8 @@
 # Paths, relative to /code where main.py is run
-pairs_path: ../data/processed/arctic/80deg.zarr
-parameters: ../configs/parameters/nn_base.yaml
-results_path: ../results/nn/charlie/arctic/80deg/
-architecture: ../configs/nn_architecture/it_2L.yaml
+pairs_path: ../data/processed/arctic/jan.zarr
+parameters: ../configs/parameters/nn_50e.yaml
+results_path: ../results/nn/charlie/80deg/5L_gelu/jan/
+architecture: ../configs/nn_architecture/it_5L_gelu.yaml
 save_val: True
 
 train_features: ['siconc', 'sithic', 'sivelv', 'sivelu', 'utau_ai', 'utau_oi', 'vtau_ai', 'vtau_oi']
@@ -13,5 +13,5 @@ difference_labels: True
 scale_features: True
 
 batch_size: 64
-shorten_dataset: 100000
+#shorten_dataset: 100000
 test_fraction: 0.01

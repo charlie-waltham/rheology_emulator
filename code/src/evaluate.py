@@ -2,9 +2,20 @@ import os
 from pathlib import Path
 from typing import Optional, Tuple
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import xarray as xr
+import matplotlib.pyplot as plt
+import matplotlib.path as mpath
+import matplotlib.colors as colors
+import matplotlib.ticker as ticker
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
+from scipy.interpolate import griddata
+from scipy.spatial import cKDTree
+import yaml
+import torch
+from torchmetrics.functional import mean_absolute_percentage_error
 
 
 TRUE_COL = "True Values"
@@ -17,7 +28,7 @@ def load_df(csv_path: str, true_col: str = TRUE_COL, pred_col: str = PRED_COL) -
     missing = [col for col in (true_col, pred_col) if col not in df.columns]
     if missing:
         raise ValueError(f"CSV missing required columns: {missing}")
-    return df[[true_col, pred_col]].copy()
+    return df
 
 
 def plot_qq(df: pd.DataFrame,
@@ -72,6 +83,7 @@ def plot_qq(df: pd.DataFrame,
         ax.set_xlim(mn, mx)
         ax.set_ylim(mn, mx)
 
+    fig.set_size_inches(10, 10)
     ax.set_xlabel("True quantiles")
     ax.set_ylabel("Pred quantiles")
     ax.set_title("QQ plot")
@@ -100,6 +112,7 @@ def plot_hexbin(df: pd.DataFrame,
     mx = df[[true_col, pred_col]].max().max()
     ax.plot([mn, mx], [mn, mx], 'r--', linewidth=1, label='1:1')
 
+    fig.set_size_inches(10, 10)
     ax.set_xlabel("True Values")
     ax.set_ylabel("Predictions")
     ax.set_title("Hexbin (Pred vs True)")
@@ -143,6 +156,7 @@ def plot_hist(df: pd.DataFrame,
     ax.hist(y_true, bins=bins, range=x_range_use, density=density, alpha=0.6, label='True', color='C0')
     ax.hist(y_pred, bins=bins, range=x_range_use, density=density, alpha=0.6, label='Pred', color='C1')
 
+    fig.set_size_inches(10, 10)
     ax.set_xlabel("Value")
     ax.set_ylabel("Density" if density else "Count")
     ax.set_title("Histogram (True vs Pred)")
@@ -152,6 +166,87 @@ def plot_hist(df: pd.DataFrame,
     ax.legend(loc="best", fontsize="small")
     return fig, ax
 
+def plot_polar_map(df: pd.DataFrame,
+                   ds: xr.Dataset,
+                   true_col: str = TRUE_COL,
+                   pred_col: str = PRED_COL,
+                   stride_base=800_000,
+                   hemisphere="north",
+                   resolution=1000,
+                   lat_cutoff=80,
+                   dist_threshold=10000):
+        
+        y_pred = torch.tensor(df[pred_col])
+        y_true = torch.tensor(df[true_col])
+        mape = torch.abs(y_pred - y_true) / torch.clamp(torch.abs(y_true), min=1.17e-06)
+
+        stride = max(1, y_true.shape[0] // stride_base)
+        mape = mape.numpy()[::stride]
+        lat = ds.coords['lat'].values[::stride]
+        lon = ds.coords['lon'].values[::stride]
+
+        if hemisphere == "south":
+            projection = ccrs.SouthPolarStereo()
+            extent = [-180, 180, -lat_cutoff, -90]
+        else:
+            projection = ccrs.NorthPolarStereo()
+            extent = [-180, 180, lat_cutoff, 90]
+        
+        # Source coord system is lon/lat
+        src_crs = ccrs.PlateCarree()
+
+        # Transform to meters
+        coords_proj = projection.transform_points(src_crs, lon, lat)
+        x_points = coords_proj[:, 0]
+        y_points = coords_proj[:, 1]
+
+        grid_x_2d, grid_y_2d = np.meshgrid(
+            np.linspace(-4000000, 4000000, resolution),
+            np.linspace(-4000000, 4000000, resolution)
+        )
+
+        grid_interpolated = griddata(
+            (x_points, y_points),
+            mape,
+            (grid_x_2d, grid_y_2d),
+            method='linear'
+        )
+
+        # Mask points that are dist_threshold from any datapoint
+        tree = cKDTree(np.column_stack((x_points, y_points)))
+        grid_pixels = np.column_stack((grid_x_2d.ravel(), grid_y_2d.ravel()))
+        dist, _ = tree.query(grid_pixels)
+        dist = dist.reshape(grid_x_2d.shape)
+        grid_interpolated[dist > dist_threshold] = np.nan
+
+        # Create plot and add continental features
+        fig = plt.figure(figsize=(10, 8))
+        ax = plt.axes(projection=projection)
+        ax.set_extent(extent, src_crs)
+        ax.add_feature(cfeature.LAND, zorder=2, facecolor='gray')
+        ax.gridlines()
+
+        # Create circular boundary
+        theta = np.linspace(0, 2*np.pi, 100)
+        center, radius = [0.5, 0.5], 0.5
+        verts = np.vstack([np.sin(theta), np.cos(theta)]).T
+        circle = mpath.Path(verts * radius + center)
+        ax.set_boundary(circle, transform=ax.transAxes)
+
+        mesh = ax.pcolormesh(
+            grid_x_2d, grid_y_2d, 
+            grid_interpolated,
+            transform=projection,
+            norm=colors.LogNorm(),
+            cmap='viridis',
+            shading='auto'
+        )
+
+        plt.colorbar(mesh, ax=ax, label='Mean Absolute Percentage Error (%)', format=ticker.PercentFormatter(1))
+        ax.set
+        plt.title("Sea Ice Velocity MAPE Map")
+
+        return fig, ax
 
 def evaluate_and_save(csv_path: str, results_dir: str):
     """Load data, plot QQ/hexbin/hist, and save figures to results_dir."""
@@ -159,6 +254,12 @@ def evaluate_and_save(csv_path: str, results_dir: str):
 
     out_dir = Path(results_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    with open(os.path.join(results_dir, "used_training_config.yaml"), "r") as file:
+        config = yaml.safe_load(file)
+    ds = xr.open_zarr(config["pairs_path"])
+    indices = df["Dataset Indices"].to_numpy()
+    ds = ds.isel(z=indices)
 
     # QQ
     fig, _ = plot_qq(df)
@@ -178,8 +279,15 @@ def evaluate_and_save(csv_path: str, results_dir: str):
     fig.savefig(hist_path, dpi=200, bbox_inches="tight")
     plt.close(fig)
 
+    # MAE Polar Map
+    fig, _ = plot_polar_map(df, ds, hemisphere=config.get("hemisphere", "north"))
+    polar_path = out_dir / "polar_map.png"
+    fig.savefig(polar_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+
     return {
         "qq": str(qq_path),
         "hexbin": str(hex_path),
         "hist": str(hist_path),
+        "polar_map": str(polar_path)
     }

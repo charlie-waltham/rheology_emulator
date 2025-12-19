@@ -12,7 +12,7 @@ from torch.utils.data import Dataset, DataLoader, random_split
 from .invertable_column_transformer import InvertableColumnTransformer
 
 class TorchDataManager:
-    def __init__(self, file_path, arguments=None, difference_labels=False):
+    def __init__(self, file_path, arguments, difference_labels=False):
         # Initialize the data manager with the file path and arguments
         self.file_path = file_path
         self.batch_size = arguments['batch_size']
@@ -47,10 +47,10 @@ class TorchDataManager:
         # if we need a shorter training set, for debugging etc
         if self.shorten_dataset is not None:
             if not self.sequential:
-                indicies = np.random.choice(len(self.dataset), size=self.shorten_dataset, replace=False)
+                indices = np.random.choice(len(self.dataset), size=self.shorten_dataset, replace=False)
             else:
-                indicies = np.arange(self.shorten_dataset)
-            self.dataset = torch.utils.data.Subset(self.dataset, indicies)
+                indices = np.arange(self.shorten_dataset)
+            self.dataset = torch.utils.data.Subset(self.dataset, indices)
 
         # make data loaders for training, validation, and testing
         self.train_loader, self.val_loader, self.test_loader = self._make_loaders()
