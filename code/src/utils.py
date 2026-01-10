@@ -16,6 +16,7 @@ import xarray as xr
 import torch.nn as nn
 import torch.optim as optim
 
+from . import models
 
 # Parse command line arguments
 def parse_args(dummy_args=False):
@@ -217,7 +218,10 @@ def build_model_from_layers(layer_list):
     # Iterate through the layer definitions
     for layer_type, args in layer_list:
         # Get the layer class from nn
-        layer_class = getattr(torch.nn, layer_type)
+        layer_class = getattr(torch.nn, layer_type, None)
+        # If not found, then look in models.py
+        if layer_class is None:
+            layer_class = getattr(models, layer_type)
         # Instantiate the layer with the provided arguments
         layers.append(layer_class(*args))
 
@@ -239,7 +243,14 @@ def nn_options(model, parameters='../configs/parameters/nn_base.yaml'):
 
     # Define the loss function
     loss_type = config.get("loss", "MSELoss")  # Default to MSELoss if not specified
-    criterion = getattr(nn, loss_type)()
+    if loss_type == "ShrinkageLoss":
+        from .loss import ShrinkageLoss
+        criterion = ShrinkageLoss(
+            a=config.get("shrinkage_a", 10),
+            c=config.get("shrinkage_c", 0.2)
+        )
+    else:
+        criterion = getattr(nn, loss_type)()
 
     # Define the optimizer
     optimizer_type = config.get("optimizer", "Adam")  # Default to Adam if not specified

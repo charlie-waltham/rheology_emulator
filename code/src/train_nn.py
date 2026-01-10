@@ -1,16 +1,11 @@
-import torch
-
 import logging
 import pickle
 
+import torch
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
 
 from . import utils
-
-# import ordinary least squares regression
-from sklearn.linear_model import LinearRegression
 
 def setup_logging(log_file='train_nn.log'):
     """
@@ -60,8 +55,6 @@ class NNCapsule:
         # Define model
         self.architecture = arguments['architecture']
         self.parameters = arguments['parameters']
-        # TODO: this is clunky and params should be wrapped up into arguments
-        #self.parameters = '../configs/training/' + arguments['training_cfg'] + '.yaml'
         self.model = utils.define_nn(self.architecture, self.n_features, self.n_labels, self.device)
         # TODO: split the below up so that they're called separately, or do some order agnostic unpacking of all the parameters
         self.criterion, self.optimizer, self.n_epochs = utils.nn_options(self.model, self.parameters)
@@ -77,7 +70,6 @@ class NNCapsule:
         logging.info(f"Architecture: {self.architecture}")
         logging.info(f"Parameters: {self.parameters}")
         logging.info(f"Number of training samples: {self.n_samples}")
-        #logging.info(f"Number of data points in sample: {self.n_observations}")
         logging.info(f"Number of batches: {self.n_batches}")
         logging.info(f"Number of features: {self.n_features}")
         logging.info(f"Number of labels: {self.n_labels}")
@@ -113,17 +105,12 @@ class NNCapsule:
         logging.info(f"Final Train Loss: {self.train_losses[-1]:.2e}, Final Val Loss: {self.val_losses[-1]:.2e}")
 
     def plot_train_losses(self, train_losses, val_losses):
-
-        #ylims = [0, np.median(train_losses)*4]
-
         fig = plt.figure(figsize=(5, 5))
         plt.plot(train_losses, label='Train Loss')
         plt.plot(val_losses, label='Validation Loss')
         plt.xlabel('Epochs')
         plt.ylabel('Loss')
-        #plt.ylim(ylims)
         plt.legend()
-        # TODO: replace show with some saving option
         plt.savefig(self.arguments['results_path'] + 'train_losses.png')
         logging.info("Training losses plotted and saved.")
         return fig
@@ -131,7 +118,7 @@ class NNCapsule:
     def ytrue_ypred(self, loader):
         predictions = []
         true_values = []
-        with torch.no_grad():  # Disable gradient tracking
+        with torch.no_grad():
             for inputs, targets in loader:
                 inputs = inputs.to(self.device)
                 outputs = self.model(inputs)
@@ -156,7 +143,7 @@ class NNCapsule:
         predictions = []
         true_values = []
         inputs_list = []
-        with torch.no_grad():  # Disable gradient tracking
+        with torch.no_grad():
             for inputs, targets in loader:
                 inputs = inputs.to(self.device)
                 outputs = self.model(inputs)
@@ -190,69 +177,7 @@ class NNCapsule:
         df.to_csv(path, index=False)
         logging.info(f"True values, predictions, and inputs saved to {path}")
     
-    def evaluation_figure(self, loader='val', ax_reduce=0.5, n_bins=50):
-
-        if loader == 'val':
-            true_values, predictions = self.ytrue_ypred(self.val_loader)
-        elif loader == 'train':
-            true_values, predictions = self.ytrue_ypred(self.train_loader)
-        
-        # Select only the first label for eval
-        if self.n_labels > 1:
-            true_values = true_values[:, 0].unsqueeze(1)
-            predictions = predictions[:, 0].unsqueeze(1)
-
-        # TODO: enable test loader
-        # elif loader == 'test':
-        #     true_values, predictions = self.ytrue_ypred(self.test_loader)
-
-        # Unscale the true values and predictions
-        # true_values = self.unscale_ytrue_ypred(true_values)
-        # predictions = self.unscale_ytrue_ypred(predictions)
-
-        # Fit a linear regression model on the predictions and true values, then plot the trendline
-        reg = LinearRegression().fit(true_values, predictions)
-        gradient = reg.coef_[0][0]
-
-        # Make an evaluation figure, with a hexbin plot and a histogram of the true and predicted
-        plt.figure(figsize=(8,12), dpi=300)
-        plt.subplot(2, 1, 1)
-        plt.hexbin(true_values, predictions, gridsize=150, cmap='Blues', mincnt=10, bins='log')
-        plt.colorbar(label='Counts')
-        # plt.scatter(true_values, predictions, s=0.5, alpha=0.2)
-        plt.plot([-5, 5], [-5, 5], 'r--', label='1:1')
-        plt.plot(true_values, reg.predict(true_values), 'r', label='Linear fit: '+ str(round(gradient,2)))
-        plt.xlabel('True Values')
-        plt.ylabel('Predictions')
-        axmin = min(true_values.min(), predictions.min())
-        axmax = max(true_values.max(), predictions.max())
-        plt.ylim(axmin*ax_reduce, axmax*ax_reduce)
-        plt.xlim(axmin*ax_reduce, axmax*ax_reduce)
-
-        mse = torch.nn.functional.mse_loss(predictions, true_values)
-        persistence_mse = torch.nn.functional.mse_loss(torch.zeros_like(true_values), true_values)
-        rmse_cms = torch.sqrt(mse) * 100  # Convert to cm/s
-        skill = 1 - (mse / persistence_mse)
-
-        plt.title(f'RMSE: {rmse_cms:.2e} cm/s, Skill: {skill:.3f}, Gradient: {gradient:.4f}')
-        plt.legend()
-
-        plt.subplot(2, 1, 2)
-        bin_edges = np.linspace(axmin, axmax, n_bins + 1)
-        plt.hist(true_values, bins=bin_edges, alpha=0.5, label='True Values', color='blue', log=True)
-        plt.hist(predictions, bins=bin_edges, alpha=0.5, label='Predictions', color='orange', log=True)
-        plt.xlabel('Values')
-        plt.ylabel('Counts')
-        plt.title('Histogram of True Values and Predictions')
-        plt.legend()
-
-        plt.tight_layout()
-        plt.savefig(self.arguments['results_path'] + f'evaluation_{loader}.png')
-
-        logging.info(f"Evaluation figure for {loader} set saved.")
-    
     def save_model(self, path):
-
         model_recreator = {
             'state_dict': self.model.state_dict(),
             'architecture': self.architecture,
@@ -263,17 +188,12 @@ class NNCapsule:
 
         with open(path, 'wb') as f:
             pickle.dump(model_recreator, f)                 
-        
 
 def train_save_eval(arguments):
-
     nn_capsule = NNCapsule(arguments)
 
     nn_capsule.train()
-
     nn_capsule.plot_train_losses(nn_capsule.train_losses, nn_capsule.val_losses)
-    nn_capsule.evaluation_figure('train', ax_reduce=0.25, n_bins=200)
-
     nn_capsule.save_model(arguments['results_path'] + 'nn_model_recreator.pkl')
 
     if arguments['save_data']:
@@ -283,4 +203,3 @@ def train_save_eval(arguments):
         nn_capsule.save_ytrue_ypred_inputs(nn_capsule.val_loader, arguments['results_path'] + 'ytrue_ypred_val.csv')
 
     logging.info("Training complete. Results saved in: " + arguments['results_path'])
-    

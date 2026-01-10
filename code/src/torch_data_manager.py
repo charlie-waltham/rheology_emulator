@@ -6,7 +6,7 @@ import xarray as xr
 import numpy as np
 
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import MaxAbsScaler, MinMaxScaler, FunctionTransformer
+from sklearn.preprocessing import StandardScaler, FunctionTransformer
 from torch.utils.data import Dataset, DataLoader, random_split
 
 from .invertable_column_transformer import InvertableColumnTransformer
@@ -19,7 +19,7 @@ class TorchDataManager:
         self.val_fraction = arguments['val_fraction']
         self.test_fraction = arguments['test_fraction']
         self.scale = arguments['scale_features']
-        self.scale_factor_features = 10
+        self.scale_factor_features = 20
         self.scale_factor_labels = 100
         self.train_features = arguments['train_features']
         self.train_labels = arguments['train_labels']
@@ -87,14 +87,24 @@ class TorchDataManager:
         return features, labels
     
     def _make_loaders(self):
-        total_size = len(self.dataset)
-        test_size = int(total_size * self.test_fraction)
-        val_size = int(total_size * self.val_fraction)
-        train_size = total_size - test_size - val_size
+        if not self.sequential:
+            total_size = len(self.dataset)
+            test_size = int(total_size * self.test_fraction)
+            val_size = int(total_size * self.val_fraction)
+            train_size = total_size - test_size - val_size
+            train_dataset, val_dataset, test_dataset = random_split(self.dataset, [train_size, val_size, test_size])
+        else:
+            # Need to produce datasets manually to preserve order
+            values = np.random.rand(len(self.dataset))
+            test_mask = values < self.test_fraction
+            val_mask = values < self.test_fraction + self.val_fraction & values >= self.test_fraction
+            train_mask = values >= self.test_fraction + self.val_fraction
+
+            train_dataset = self.dataset[train_mask]
+            val_dataset = self.dataset[val_mask]
+            test_dataset = self.dataset[test_mask]
         
-        train_dataset, val_dataset, test_dataset = random_split(self.dataset, [train_size, val_size, test_size])
-        
-        train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
+        train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=False if self.sequential else True)
         val_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False)
         test_loader = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False)
 
@@ -118,7 +128,7 @@ class TorchDataManager:
                                             validate=True,
                                             kw_args={'scale_factor': self.scale_factor_features},
                                             inv_kw_args={'scale_factor': self.scale_factor_features})),
-            ('scaler', MaxAbsScaler())
+            ('scaler', StandardScaler())
         ])
         self.label_vel_scaler = Pipeline([
             ('log', FunctionTransformer(func=self._log_scaled,
@@ -126,7 +136,7 @@ class TorchDataManager:
                                             validate=True,
                                             kw_args={'scale_factor': self.scale_factor_labels},
                                             inv_kw_args={'scale_factor': self.scale_factor_labels})),
-            ('scaler', MaxAbsScaler())
+            ('scaler', StandardScaler())
         ])
 
         # Find which velocity values are present
@@ -137,7 +147,7 @@ class TorchDataManager:
             transformers=[
                 ('velocity', self.feature_vel_scaler, vel_indices)
             ],
-            remainder=MinMaxScaler()
+            remainder=StandardScaler()
         )
 
         self.features = self.scaler.fit_transform(self.features)

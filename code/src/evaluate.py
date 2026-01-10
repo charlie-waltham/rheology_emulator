@@ -15,8 +15,7 @@ from scipy.interpolate import griddata
 from scipy.spatial import cKDTree
 import yaml
 import torch
-from torchmetrics.functional import mean_absolute_percentage_error
-
+import torch.nn.functional as F
 
 TRUE_COL = "True Values"
 PRED_COL = "Predictions"
@@ -160,6 +159,7 @@ def plot_hist(df: pd.DataFrame,
     ax.set_xlabel("Value")
     ax.set_ylabel("Density" if density else "Count")
     ax.set_title("Histogram (True vs Pred)")
+    ax.set_yscale("log")
     if x_range_use is not None:
         ax.set_xlim(x_range_use)
     ax.grid(True, alpha=0.3)
@@ -172,7 +172,7 @@ def plot_polar_map(df: pd.DataFrame,
                    pred_col: str = PRED_COL,
                    stride_base=800_000,
                    hemisphere="north",
-                   resolution=1000,
+                   resolution=500,
                    lat_cutoff=80,
                    dist_threshold=10000):
         
@@ -261,25 +261,33 @@ def evaluate_and_save(csv_path: str, results_dir: str):
     indices = df["Dataset Indices"].to_numpy()
     ds = ds.isel(z=indices)
 
+    mse = F.mse_loss(torch.tensor(df[PRED_COL]), torch.tensor(df[TRUE_COL]))
+    rmse_cms = np.sqrt(mse) * 100
+    print(f"MSE: {mse:.2e}\nRMSE (cm/s): {rmse_cms:.2e}")
+
     # QQ
+    print("qq")
     fig, _ = plot_qq(df)
     qq_path = out_dir / "qq.png"
     fig.savefig(qq_path, dpi=200, bbox_inches="tight")
     plt.close(fig)
 
     # Hexbin
+    print("hexbin")
     fig, _ = plot_hexbin(df)
     hex_path = out_dir / "hexbin.png"
     fig.savefig(hex_path, dpi=200, bbox_inches="tight")
     plt.close(fig)
 
     # Histogram
-    fig, _ = plot_hist(df)
+    print("histogram")
+    fig, _ = plot_hist(df, density=False)
     hist_path = out_dir / "hist.png"
     fig.savefig(hist_path, dpi=200, bbox_inches="tight")
     plt.close(fig)
 
     # MAE Polar Map
+    print("polar map")
     fig, _ = plot_polar_map(df, ds, hemisphere=config.get("hemisphere", "north"))
     polar_path = out_dir / "polar_map.png"
     fig.savefig(polar_path, dpi=200, bbox_inches="tight")
