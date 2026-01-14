@@ -50,7 +50,7 @@ class NNCapsule:
             self.label_scaler = None
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.device = torch.device("cpu")  # Force CPU for debugging
+        #self.device = torch.device("cpu")  # Force CPU for debugging
 
         # Define model
         self.architecture = arguments['architecture']
