@@ -1,5 +1,5 @@
 # Paths, relative to /code where main.py is run
-pairs_path: ../data/processed/arctic/80deg.zarr
+pairs_path: ../data/processed/arctic/jan.zarr
 parameters: ../configs/parameters/nn_shrinkage.yaml
 results_path: ../results/nn/charlie/80deg/focal/
 architecture: ../configs/nn_architecture/it_5L_gelu.yaml
@@ -12,6 +12,6 @@ zarr_fmt: fmt2
 difference_labels: True
 scale_features: True
 
-batch_size: 64
-#shorten_dataset: 100000
+batch_size: 32768
+shorten_dataset: 100000
 test_fraction: 0.01

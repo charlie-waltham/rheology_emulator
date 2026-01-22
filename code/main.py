@@ -125,8 +125,6 @@ def main():
     # Set the random seed for reproducibility
     set_seed(args['seed'])
 
-    print(args)
-
     # Check if multiple modes are enabled
     if args['train'] + args['evaluate'] > 1:
         print("Error: Only one mode can be enabled at a time. Please choose one of --train or --evaluate.")
@@ -156,4 +154,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-        

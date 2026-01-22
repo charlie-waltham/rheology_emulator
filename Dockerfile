@@ -49,5 +49,5 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Copy the source code into the container.
 COPY . .
 
-# Run the application.
-CMD sh
+WORKDIR /code
+ENTRYPOINT [ "python", "main.py" ]

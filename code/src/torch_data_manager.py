@@ -32,7 +32,12 @@ class TorchDataManager:
 
         # if difference labels is true, difference the labels
         if self.difference_labels:
-            self._difference_labels()
+            differenced = self.raw_data.get('d_label')
+            if differenced is not None:
+                logging.info('Using pre-differenced labels from d_labels')
+                self.raw_data['labels'].values = self.raw_data['d_labels'].values
+            else:
+                self._difference_labels()
 
         # extract numerical data for features and labels, subsetting according to train_features and train_labels
         self.features, self.labels = self._extract_features_labels()
@@ -59,7 +64,7 @@ class TorchDataManager:
         self._get_loader_sizes()
 
         # Print short summary
-        self._print_summary()
+        #self._print_summary()
         
     def _print_summary(self):
         print(f"Data loaded from {self.file_path}")
@@ -103,12 +108,22 @@ class TorchDataManager:
             train_dataset = self.dataset[train_mask]
             val_dataset = self.dataset[val_mask]
             test_dataset = self.dataset[test_mask]
-        
-        train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=False if self.sequential else True)
-        val_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False)
-        test_loader = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False)
+
+        train_loader = self._standard_dataloader(train_dataset, shuffle=not self.sequential)
+        val_loader = self._standard_dataloader(val_dataset, shuffle=False)
+        test_loader = self._standard_dataloader(test_dataset, shuffle=False)
 
         return train_loader, val_loader, test_loader
+
+    def _standard_dataloader(self, dataset, shuffle):
+        return DataLoader(dataset,
+            batch_size=self.batch_size,
+            shuffle=shuffle,
+            num_workers=4,
+            pin_memory=True,
+            prefetch_factor=2,
+            persistent_workers=True
+        )
 
     def _get_loader_sizes(self):
         self.n_train = len(self.train_loader.dataset)

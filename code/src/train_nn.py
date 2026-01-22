@@ -50,7 +50,7 @@ class NNCapsule:
             self.label_scaler = None
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        #self.device = torch.device("cpu")  # Force CPU for debugging
+        logging.info(f'Using device: {self.device}')
 
         # Define model
         self.architecture = arguments['architecture']
@@ -63,9 +63,9 @@ class NNCapsule:
 
         # Set up logging
         setup_logging(log_file='train_nn.log')
-        self._print_summary()
+        self._log_summary()
 
-    def _print_summary(self):
+    def _log_summary(self):
         logging.info("Model Summary:")
         logging.info(f"Architecture: {self.architecture}")
         logging.info(f"Parameters: {self.parameters}")
@@ -79,21 +79,22 @@ class NNCapsule:
             self.model.train()
             running_loss = 0.0
             for inputs, targets in self.train_loader:
-                inputs, targets = inputs.to(self.device), targets.to(self.device)
+                inputs, targets = inputs.to(self.device, non_blocking=True), targets.to(self.device, non_blocking=True)
                 self.optimizer.zero_grad()
-                outputs = self.model(inputs)
-                loss = self.criterion(outputs, targets)
+                with torch.amp.autocast(self.device.type):
+                    outputs = self.model(inputs)
+                    loss = self.criterion(outputs, targets)
                 loss.backward()
                 self.optimizer.step()
-                running_loss += loss.item()
-            self.train_losses.append(running_loss / len(self.train_loader))
+                running_loss += loss.detach()
+            self.train_losses.append(running_loss.item() / len(self.train_loader))
 
             # Validation
             self.model.eval()
             val_loss = 0.0
             with torch.no_grad():
                 for inputs, targets in self.val_loader:
-                    inputs, targets = inputs.to(self.device), targets.to(self.device)
+                    inputs, targets = inputs.to(self.device, non_blocking=True), targets.to(self.device, non_blocking=True)
                     outputs = self.model(inputs)
                     loss = self.criterion(outputs, targets)
                     val_loss += loss.item()
@@ -194,7 +195,7 @@ def train_save_eval(arguments):
 
     nn_capsule.train()
     nn_capsule.plot_train_losses(nn_capsule.train_losses, nn_capsule.val_losses)
-    nn_capsule.save_model(arguments['results_path'] + 'nn_model_recreator.pkl')
+    #nn_capsule.save_model(arguments['results_path'] + 'nn_model_recreator.pkl')
 
     if arguments['save_data']:
         nn_capsule.data_manager.save_datasets(arguments['results_path'] + 'data_splits/')

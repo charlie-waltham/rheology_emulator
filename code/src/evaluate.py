@@ -178,10 +178,11 @@ def plot_polar_map(df: pd.DataFrame,
         
         y_pred = torch.tensor(df[pred_col])
         y_true = torch.tensor(df[true_col])
-        mape = torch.abs(y_pred - y_true) / torch.clamp(torch.abs(y_true), min=1.17e-06)
+        #mape = torch.abs(y_pred - y_true) / torch.clamp(torch.abs(y_true), min=1.17e-06)
+        mae = F.l1_loss(y_pred, y_true, reduction='none')
 
         stride = max(1, y_true.shape[0] // stride_base)
-        mape = mape.numpy()[::stride]
+        mae = mae.numpy()[::stride]
         lat = ds.coords['lat'].values[::stride]
         lon = ds.coords['lon'].values[::stride]
 
@@ -207,7 +208,7 @@ def plot_polar_map(df: pd.DataFrame,
 
         grid_interpolated = griddata(
             (x_points, y_points),
-            mape,
+            mae,
             (grid_x_2d, grid_y_2d),
             method='linear'
         )
@@ -242,9 +243,8 @@ def plot_polar_map(df: pd.DataFrame,
             shading='auto'
         )
 
-        plt.colorbar(mesh, ax=ax, label='Mean Absolute Percentage Error (%)', format=ticker.PercentFormatter(1))
-        ax.set
-        plt.title("Sea Ice Velocity MAPE Map")
+        plt.colorbar(mesh, ax=ax, label='Mean Absolute Error (m/s)')
+        ax.set_title("Sea Ice Velocity MAE Map")
 
         return fig, ax
 
