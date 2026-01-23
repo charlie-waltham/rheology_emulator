@@ -22,7 +22,7 @@ class NNCapsule:
         # Load data
         self.zarr_fmt = arguments['zarr_fmt']
         if self.zarr_fmt == 'fmt1':
-            from .dataset_utils import TorchDataManager
+            from data_managers.fmt1 import TorchDataManager
             self.data_manager = TorchDataManager(arguments['pairs_path'], arguments, zarr_fmt=self.zarr_fmt, difference_labels=arguments['difference_labels'])
             self.train_loader = self.data_manager.train.dataset
             self.val_loader = self.data_manager.val.dataset
@@ -32,7 +32,7 @@ class NNCapsule:
             self.n_samples = len(self.train_loader.dataset)
             self.n_observations = self.train_loader[10][0].shape[0]
         elif self.zarr_fmt == 'fmt2':
-            from .torch_data_manager import TorchDataManager
+            from data_managers.fmt2 import TorchDataManager
             self.data_manager = TorchDataManager(arguments['pairs_path'], arguments, difference_labels=arguments['difference_labels'])
             self.n_features = self.data_manager.n_features
             self.n_labels = self.data_manager.n_labels
@@ -167,13 +167,15 @@ class NNCapsule:
 
         # Save to a CSV file
         df = pd.DataFrame({
-            'True Values': true_values.numpy()[:, 0].flatten(),
-            'Predictions': predictions.numpy()[:, 0].flatten(),
-            'Dataset Indices': indices
+            'true_sivelu': true_values.numpy()[:, 0].flatten(),
+            'true_sivelv': true_values.numpy()[:, 1].flatten(),
+            'pred_sivelu': predictions.numpy()[:, 0].flatten(),
+            'pred_sivelv': predictions.numpy()[:, 1].flatten(),
+            'indices': indices
         })
         # Add input features to the dataframe
         for i in range(inputs_all.shape[1]):
-            df[f'Input Feature {i+1}'] = inputs_all[:, i].flatten()
+            df[f'feature_{i+1}'] = inputs_all[:, i].flatten()
         
         df.to_csv(path, index=False)
         logging.info(f"True values, predictions, and inputs saved to {path}")

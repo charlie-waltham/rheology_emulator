@@ -2,22 +2,8 @@
 **junk**
 
 .venv
-
-data/raw/**
-data/intermediate/**
-
-results/**
-
-code/*.ipynb*
-code/*.nc*
-code/*.pkl*
-code/*.log
-
-code/src/*.ipynb*
-code/src/*.nc*
-code/src/*.pkl*
-
-code/raw_retrieval/*
-
 results
-data/**/*
+data
+
+code/*.log
+code/raw_retrieval/*

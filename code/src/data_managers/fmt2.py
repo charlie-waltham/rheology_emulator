@@ -9,7 +9,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, FunctionTransformer
 from torch.utils.data import Dataset, DataLoader, random_split
 
-from .invertable_column_transformer import InvertableColumnTransformer
+from ..invertable_column_transformer import InvertableColumnTransformer
 
 class TorchDataManager:
     def __init__(self, file_path, arguments, difference_labels=False):
