@@ -22,7 +22,7 @@ class NNCapsule:
         # Load data
         self.zarr_fmt = arguments['zarr_fmt']
         if self.zarr_fmt == 'fmt1':
-            from data_managers.fmt1 import TorchDataManager
+            from .data_managers.fmt1 import TorchDataManager
             self.data_manager = TorchDataManager(arguments['pairs_path'], arguments, zarr_fmt=self.zarr_fmt, difference_labels=arguments['difference_labels'])
             self.train_loader = self.data_manager.train.dataset
             self.val_loader = self.data_manager.val.dataset
@@ -32,7 +32,7 @@ class NNCapsule:
             self.n_samples = len(self.train_loader.dataset)
             self.n_observations = self.train_loader[10][0].shape[0]
         elif self.zarr_fmt == 'fmt2':
-            from data_managers.fmt2 import TorchDataManager
+            from .data_managers.fmt2 import TorchDataManager
             self.data_manager = TorchDataManager(arguments['pairs_path'], arguments, difference_labels=arguments['difference_labels'])
             self.n_features = self.data_manager.n_features
             self.n_labels = self.data_manager.n_labels
