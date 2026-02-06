@@ -7,15 +7,22 @@ import matplotlib.pyplot as plt
 
 from . import utils
 
+
 class NNCapsule:
     def __init__(self, arguments):
         self.arguments = arguments
 
         # Load data
-        self.zarr_fmt = arguments['zarr_fmt']
-        if self.zarr_fmt == 'fmt1':
+        self.zarr_fmt = arguments["zarr_fmt"]
+        if self.zarr_fmt == "fmt1":
             from .data_managers.fmt1 import TorchDataManager
-            self.data_manager = TorchDataManager(arguments['pairs_path'], arguments, zarr_fmt=self.zarr_fmt, difference_labels=arguments['difference_labels'])
+
+            self.data_manager = TorchDataManager(
+                arguments["pairs_path"],
+                arguments,
+                zarr_fmt=self.zarr_fmt,
+                difference_labels=arguments["difference_labels"],
+            )
             self.train_loader = self.data_manager.train.dataset
             self.val_loader = self.data_manager.val.dataset
             self.n_features = self.train_loader[0][0].shape[1]
@@ -23,8 +30,9 @@ class NNCapsule:
             self.n_batches = len(self.train_loader)
             self.n_samples = len(self.train_loader.dataset)
             self.n_observations = self.train_loader[10][0].shape[0]
-        elif self.zarr_fmt == 'fmt2':
+        elif self.zarr_fmt == "fmt2":
             from .data_managers.fmt2 import TorchDataManager
+
             self.data_manager = TorchDataManager(arguments)
             self.n_features = self.data_manager.n_features
             self.n_labels = self.data_manager.n_labels
@@ -37,14 +45,18 @@ class NNCapsule:
         self.scaler = self.data_manager.scaler if self.data_manager.scale else None
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        logging.info(f'Using device: {self.device}')
+        logging.info(f"Using device: {self.device}")
 
         # Define model
-        self.architecture = arguments['architecture']
-        self.parameters = arguments['parameters']
-        self.model = utils.define_nn(self.architecture, self.n_features, self.n_labels, self.device)
+        self.architecture = arguments["architecture"]
+        self.parameters = arguments["parameters"]
+        self.model = utils.define_nn(
+            self.architecture, self.n_features, self.n_labels, self.device
+        )
         # TODO: split the below up so that they're called separately, or do some order agnostic unpacking of all the parameters
-        self.criterion, self.optimizer, self.n_epochs = utils.nn_options(self.model, self.parameters)
+        self.criterion, self.optimizer, self.n_epochs = utils.nn_options(
+            self.model, self.parameters
+        )
         self.train_losses = []
         self.val_losses = []
 
@@ -64,7 +76,10 @@ class NNCapsule:
             self.model.train()
             running_loss = 0.0
             for inputs, targets in self.train_loader:
-                inputs, targets = inputs.to(self.device, non_blocking=True), targets.to(self.device, non_blocking=True)
+                inputs, targets = (
+                    inputs.to(self.device, non_blocking=True),
+                    targets.to(self.device, non_blocking=True),
+                )
                 self.optimizer.zero_grad()
                 outputs = self.model(inputs)
                 loss = self.criterion(outputs, targets)
@@ -78,28 +93,35 @@ class NNCapsule:
             val_loss = 0.0
             with torch.no_grad():
                 for inputs, targets in self.val_loader:
-                    inputs, targets = inputs.to(self.device, non_blocking=True), targets.to(self.device, non_blocking=True)
+                    inputs, targets = (
+                        inputs.to(self.device, non_blocking=True),
+                        targets.to(self.device, non_blocking=True),
+                    )
                     outputs = self.model(inputs)
                     loss = self.criterion(outputs, targets)
                     val_loss += loss.detach()
             self.val_losses.append(val_loss.item() / len(self.val_loader))
 
-            logging.info(f"Epoch {epoch+1}, Train Loss: {self.train_losses[-1]:.2e}, Val Loss: {self.val_losses[-1]:.2e}")
+            logging.info(
+                f"Epoch {epoch + 1}, Train Loss: {self.train_losses[-1]:.2e}, Val Loss: {self.val_losses[-1]:.2e}"
+            )
 
         logging.info("Training complete.")
-        logging.info(f"Final Train Loss: {self.train_losses[-1]:.2e}, Final Val Loss: {self.val_losses[-1]:.2e}")
+        logging.info(
+            f"Final Train Loss: {self.train_losses[-1]:.2e}, Final Val Loss: {self.val_losses[-1]:.2e}"
+        )
 
     def plot_train_losses(self, train_losses, val_losses):
         fig = plt.figure(figsize=(5, 5))
-        plt.plot(train_losses, label='Train Loss')
-        plt.plot(val_losses, label='Validation Loss')
-        plt.xlabel('Epochs')
-        plt.ylabel('Loss')
+        plt.plot(train_losses, label="Train Loss")
+        plt.plot(val_losses, label="Validation Loss")
+        plt.xlabel("Epochs")
+        plt.ylabel("Loss")
         plt.legend()
-        plt.savefig(self.arguments['results_path'] + 'train_losses.png')
+        plt.savefig(self.arguments["results_path"] + "train_losses.png")
         logging.info("Training losses plotted and saved.")
         return fig
-    
+
     def ytrue_ypred(self, loader):
         predictions = []
         true_values = []
@@ -115,7 +137,7 @@ class NNCapsule:
         true_values = torch.cat(true_values, dim=0).to("cpu")
 
         # Unscale the true values and predictions
-        if (self.data_manager.scale):
+        if self.data_manager.scale:
             predictions = self.scaler.label_scaler.inverse_transform(predictions)
             true_values = self.scaler.label_scaler.inverse_transform(true_values)
 
@@ -123,7 +145,7 @@ class NNCapsule:
             true_values = torch.tensor(true_values)
 
         return true_values, predictions
-    
+
     def save_ytrue_ypred_inputs(self, loader, path):
         predictions = []
         true_values = []
@@ -144,29 +166,36 @@ class NNCapsule:
         indices = loader.dataset.indices
 
         # Unscale the true values, predictions and inputs
-        if (self.data_manager.scale):
-            predictions = torch.tensor(self.scaler.label_scaler.inverse_transform(predictions))
-            true_values = torch.tensor(self.scaler.label_scaler.inverse_transform(true_values))
+        if self.data_manager.scale:
+            predictions = torch.tensor(
+                self.scaler.label_scaler.inverse_transform(predictions)
+            )
+            true_values = torch.tensor(
+                self.scaler.label_scaler.inverse_transform(true_values)
+            )
             inputs_all = self.scaler.feature_scaler.inverse_transform(inputs_all)
 
         # Save to a CSV file
-        df = pd.DataFrame({
-            'true_sivelu': true_values.numpy()[:, 0].flatten(),
-            'true_sivelv': true_values.numpy()[:, 1].flatten(),
-            'pred_sivelu': predictions.numpy()[:, 0].flatten(),
-            'pred_sivelv': predictions.numpy()[:, 1].flatten(),
-            'indices': indices
-        })
+        df = pd.DataFrame(
+            {
+                "true_sivelu": true_values.numpy()[:, 0].flatten(),
+                "true_sivelv": true_values.numpy()[:, 1].flatten(),
+                "pred_sivelu": predictions.numpy()[:, 0].flatten(),
+                "pred_sivelv": predictions.numpy()[:, 1].flatten(),
+                "indices": indices,
+            }
+        )
         # Add input features to the dataframe
         for i in range(inputs_all.shape[1]):
-            df[f'feature_{i+1}'] = inputs_all[:, i].flatten()
-        
+            df[f"feature_{i + 1}"] = inputs_all[:, i].flatten()
+
         df.to_csv(path, index=False)
         logging.info(f"True values, predictions, and inputs saved to {path}")
-    
+
     def save_model(self, path):
-        torch.save(self.model.state_dict(), path)      
-        logging.info(f"Model saved to {path}")           
+        torch.save(self.model.state_dict(), path)
+        logging.info(f"Model saved to {path}")
+
 
 def train_save_eval(arguments):
     nn_capsule = NNCapsule(arguments)
@@ -174,13 +203,17 @@ def train_save_eval(arguments):
     nn_capsule.train()
     nn_capsule.plot_train_losses(nn_capsule.train_losses, nn_capsule.val_losses)
 
-    if arguments['save_model']:
-        nn_capsule.save_model(arguments['results_path'] + 'model.pkl')
+    if arguments["save_model"]:
+        nn_capsule.save_model(arguments["results_path"] + "model.pkl")
 
-    if arguments['save_data']:
-        nn_capsule.data_manager.save_datasets(arguments['results_path'] + 'data_splits/')
+    if arguments["save_data"]:
+        nn_capsule.data_manager.save_datasets(
+            arguments["results_path"] + "data_splits/"
+        )
 
-    if arguments['save_val']:
-        nn_capsule.save_ytrue_ypred_inputs(nn_capsule.val_loader, arguments['results_path'] + 'ytrue_ypred_val.csv')
+    if arguments["save_val"]:
+        nn_capsule.save_ytrue_ypred_inputs(
+            nn_capsule.val_loader, arguments["results_path"] + "ytrue_ypred_val.csv"
+        )
 
-    logging.info("Training complete. Results saved in: " + arguments['results_path'])
+    logging.info("Training complete. Results saved in: " + arguments["results_path"])

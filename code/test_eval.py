@@ -10,7 +10,7 @@ runs = []
 for i in range(1, 13):
     path = Path(f"../results/nn/charlie/arctic-test-suite/all/{i}")
     run = next(path.iterdir())
-    
+
     metrics_file = os.path.join(run, "metrics.json")
     with open(metrics_file, "r") as f:
         runs.append(json.loads(f.read()))
@@ -32,7 +32,7 @@ for i, (metric, values) in enumerate(metrics.items()):
     axs[i].plot(months, metrics[metric])
     axs[i].set_title(metric)
     axs[i].xaxis.set_major_locator(MonthLocator(bymonth=np.arange(1, 13)))
-    axs[i].xaxis.set_major_formatter(DateFormatter('%b'))
+    axs[i].xaxis.set_major_formatter(DateFormatter("%b"))
 
 eval_path = Path("../results/eval")
 eval_path.mkdir(parents=True, exist_ok=True)
