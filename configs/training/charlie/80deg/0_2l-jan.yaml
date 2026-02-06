@@ -1,5 +1,5 @@
 # Paths, relative to /code where main.py is run
-pairs_path: ../data/processed/arctic/jan.zarr
+pairs_path: ../data/processed/arctic/80deg/1.zarr
 parameters: ../configs/parameters/nn_50e.yaml
 results_path: ../results/nn/charlie/80deg/2L/jan/
 architecture: ../configs/nn_architecture/it_2L.yaml

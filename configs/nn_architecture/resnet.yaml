@@ -1,0 +1,10 @@
+model:
+  res_in:
+    type: ResBlockMLP
+    args: [null, 128, 0]
+  res_multi:
+    type: MultiResBlockMLP
+    args: [128, 128, 0.2, 30]
+  res_out:
+    type: ResBlockMLP
+    args: [128, null, 0]

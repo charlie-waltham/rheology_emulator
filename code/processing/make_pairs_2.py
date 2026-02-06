@@ -48,7 +48,7 @@ def make_pairs(filelist, features, labels, stack_pairs=True, apply_siconc_mask=T
     
     The timestamp, lat, and lon coordinates are also included.
     '''
-    if not 'siconc' in features:
+    if 'siconc' not in features:
         features = ['siconc'] + features
 
     # TODO: If needed, make chunking behavior specifiable

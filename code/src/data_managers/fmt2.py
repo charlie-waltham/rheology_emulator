@@ -1,31 +1,30 @@
 import pickle
 import torch
 import logging
+from pathlib import Path
 
 import xarray as xr
 import numpy as np
 
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler, FunctionTransformer
-from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.data import Dataset, DataLoader, random_split, Subset
 
-from ..invertable_column_transformer import InvertableColumnTransformer
+from ..scaling import LogFLTransformer
 
 class TorchDataManager:
-    def __init__(self, file_path, arguments, difference_labels=False):
+    def __init__(self, arguments: dict):
         # Initialize the data manager with the file path and arguments
-        self.file_path = file_path
-        self.batch_size = arguments['batch_size']
-        self.val_fraction = arguments['val_fraction']
-        self.test_fraction = arguments['test_fraction']
-        self.scale = arguments['scale_features']
+        self.pairs_path = arguments.get('pairs_path')
+        self.batch_size = arguments.get('batch_size')
+        self.val_fraction = arguments.get('val_fraction')
+        self.test_fraction = arguments.get('test_fraction')
+        self.scale = arguments.get('scale_features')
         self.scale_factor_features = 20
         self.scale_factor_labels = 100
-        self.train_features = arguments['train_features']
-        self.train_labels = arguments['train_labels']
-        self.difference_labels = difference_labels
-        self.shorten_dataset = arguments['shorten_dataset']
-        self.sequential = arguments['sequential']
+        self.train_features = arguments.get('train_features')
+        self.train_labels = arguments.get('train_labels')
+        self.difference_labels = arguments.get('difference_labels')
+        self.shorten_dataset = arguments.get('shorten_dataset')
+        self.sequential = arguments.get('sequential')
 
         # load the raw data
         self.raw_data = self._load_zarr()
@@ -42,43 +41,59 @@ class TorchDataManager:
         # extract numerical data for features and labels, subsetting according to train_features and train_labels
         self.features, self.labels = self._extract_features_labels()
 
-        # scale velocity by an arcsinh scaler, rest by minmax scaler
-        if self.scale:
-            self._scale()
+        if arguments.get('test'):
+            self.eval_path = Path(arguments['eval_path'])
+            # Get scaler
+            scaler_path = self.eval_path / 'data_splits/scaler.pkl'
+            if scaler_path.exists():
+                with open(scaler_path, 'rb') as scaler_file:
+                    self.scaler = pickle.load(scaler_file)
 
-        # make a torch style dataset
-        self.dataset = FeatureLabelDataset(self.features, self.labels)
+                # Scale by precalculated scaler
+                self.features = self.scaler.feature_scaler.transform(self.features)
+                self.labels = self.scaler.label_scaler.transform(self.labels)
 
-        # if we need a shorter training set, for debugging etc
-        if self.shorten_dataset is not None:
-            if not self.sequential:
-                indices = np.random.choice(len(self.dataset), size=self.shorten_dataset, replace=False)
-            else:
-                indices = np.arange(self.shorten_dataset)
-            self.dataset = torch.utils.data.Subset(self.dataset, indices)
+            indices_path = self.eval_path / 'data_splits/test_dataset.pt'
+            if not indices_path.exists():
+                logging.error(f'Test dataset indices not found at {indices_path}')
+                return
 
-        # make data loaders for training, validation, and testing
-        self.train_loader, self.val_loader, self.test_loader = self._make_loaders()
+            self.dataset = FeatureLabelDataset(self.features, self.labels)
+            test_indices = torch.load(indices_path, weights_only=False)
+            test_dataset = Subset(self.dataset, test_indices)
 
-        # assign dimensions of loaders
-        self._get_loader_sizes()
+            self.test_loader = self._standard_dataloader(test_dataset, shuffle=False)
 
-        # Print short summary
-        #self._print_summary()
-        
-    def _print_summary(self):
-        print(f"Data loaded from {self.file_path}")
-        print(f"Data from zarr fmt2 format (long list)")
-        print(f"Batch size: {self.batch_size}")
-        print(f"Validation fraction: {self.val_fraction}")
-        print(f"Test fraction: {self.test_fraction}")
-        print(f"Dataset sizes: Train={self.n_train}, Val={self.n_val}, Test={self.n_test}")
-        print(f"Number of batches: Train={self.n_batches_train}, Val={self.n_batches_val}, Test={self.n_batches_test}")
-        print(f"Number of features: {self.n_features}")
-        print(f"Number of labels: {self.n_labels}")
+            self.n_test = len(self.test_loader.dataset)
+            self.n_batches_test = len(self.test_loader)
+            self.n_features = len(self.train_features)
+            self.n_labels = len(self.train_labels)
+
+        else:
+            if self.scale:
+                self._scale()
+
+            # make a torch style dataset
+            self.dataset = FeatureLabelDataset(self.features, self.labels)
+
+            # if we need a shorter training set, for debugging etc
+            if self.shorten_dataset is not None:
+                if not self.sequential:
+                    indices = np.random.choice(len(self.dataset), size=self.shorten_dataset, replace=False)
+                else:
+                    indices = np.arange(self.shorten_dataset)
+                self.dataset = torch.utils.data.Subset(self.dataset, indices)
+
+            # make data loaders for training, validation, and testing
+            self.train_loader, self.val_loader, self.test_loader = self._make_loaders()
+
+            # assign dimensions of loaders
+            self._get_loader_sizes()
+
+        self.raw_data.close()
 
     def _load_zarr(self):
-        return xr.open_zarr(self.file_path)
+        return xr.open_zarr(self.pairs_path)
     
     def _difference_labels(self):
         logging.info('Differencing labels...')
@@ -136,57 +151,20 @@ class TorchDataManager:
         self.n_labels = len(self.train_loader.dataset[0][1])
 
     def _scale(self):
-        # Define a custom scaler for velocity values
-        self.feature_vel_scaler = Pipeline([
-            ('log', FunctionTransformer(func=self._log_scaled,
-                                            inverse_func=self._exp_scaled,
-                                            validate=True,
-                                            kw_args={'scale_factor': self.scale_factor_features},
-                                            inv_kw_args={'scale_factor': self.scale_factor_features})),
-            ('scaler', StandardScaler())
-        ])
-        self.label_vel_scaler = Pipeline([
-            ('log', FunctionTransformer(func=self._log_scaled,
-                                            inverse_func=self._exp_scaled,
-                                            validate=True,
-                                            kw_args={'scale_factor': self.scale_factor_labels},
-                                            inv_kw_args={'scale_factor': self.scale_factor_labels})),
-            ('scaler', StandardScaler())
-        ])
+        self.scaler = LogFLTransformer(self.features, self.labels, self.train_features, self.scale_factor_features, self.scale_factor_labels)
 
-        # Find which velocity values are present
-        vel_indices = [self.train_features.index(n) for n in ['sivelv', 'sivelu'] if n in self.train_features]
+        self.features = self.scaler.feature_scaler.transform(self.features)
+        self.labels = self.scaler.label_scaler.transform(self.labels)
 
-        # Define a scaler for all features
-        self.scaler = InvertableColumnTransformer(
-            transformers=[
-                ('velocity', self.feature_vel_scaler, vel_indices)
-            ],
-            remainder=StandardScaler()
-        )
-
-        self.features = self.scaler.fit_transform(self.features)
-        self.labels = self.label_vel_scaler.fit_transform(self.labels)
-
-        feature_vel_scale = self.scaler.named_transformers_['velocity'].named_steps['scaler'].scale_
-        label_vel_scale = self.label_vel_scaler.named_steps['scaler'].scale_
+        feature_vel_scale = self.scaler.feature_scaler.named_transformers_['velocity'].named_steps['scaler'].scale_
+        label_vel_scale = self.scaler.label_scaler.named_steps['scaler'].scale_
         logging.info(f'Feature vel scale: {feature_vel_scale}\nLabel vel scale: {label_vel_scale}')
 
-    def _arcsinh_scaled(self, x, scale_factor=2):
-        return np.arcsinh(x * scale_factor)
-    def _sinh_scaled(self, x, scale_factor=2):
-        return np.sinh(x) / scale_factor
-    
-    def _log_scaled(self, x, scale_factor=1):
-        return np.sign(x) * np.log1p(np.abs(x) * scale_factor)
-    def _exp_scaled(self, x, scale_factor=1):
-        return np.sign(x) * (np.expm1(np.abs(x)) / scale_factor)
-
     def save_datasets(self, save_path):
-        # Save the datasets to the specified path
-        torch.save(self.train_loader.dataset, save_path + 'train_dataset.pt')
-        torch.save(self.val_loader.dataset, save_path + 'val_dataset.pt')
-        torch.save(self.test_loader.dataset, save_path + 'test_dataset.pt')
+        # Save dataset indices
+        torch.save(self.train_loader.dataset.indices, save_path + 'train_dataset.pt')
+        torch.save(self.val_loader.dataset.indices, save_path + 'val_dataset.pt')
+        torch.save(self.test_loader.dataset.indices, save_path + 'test_dataset.pt')
         if self.scale:
             with open(save_path + 'scaler.pkl', 'wb') as f:
                 pickle.dump(self.scaler, f)

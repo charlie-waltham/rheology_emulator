@@ -1,19 +1,11 @@
 import logging
-import pickle
 
 import torch
+
 import pandas as pd
 import matplotlib.pyplot as plt
 
 from . import utils
-
-def setup_logging(log_file='train_nn.log'):
-    """
-    Set up logging to a file.
-    """
-    logging.basicConfig(filename=log_file, level=logging.INFO,
-                        format='%(asctime)s - %(levelname)s - %(message)s')
-    logging.info("Logging setup complete.")
 
 class NNCapsule:
     def __init__(self, arguments):
@@ -33,7 +25,7 @@ class NNCapsule:
             self.n_observations = self.train_loader[10][0].shape[0]
         elif self.zarr_fmt == 'fmt2':
             from .data_managers.fmt2 import TorchDataManager
-            self.data_manager = TorchDataManager(arguments['pairs_path'], arguments, difference_labels=arguments['difference_labels'])
+            self.data_manager = TorchDataManager(arguments)
             self.n_features = self.data_manager.n_features
             self.n_labels = self.data_manager.n_labels
             self.n_samples = self.data_manager.n_train
@@ -42,12 +34,7 @@ class NNCapsule:
             self.val_loader = self.data_manager.val_loader
             self.test_loader = self.data_manager.test_loader
 
-        if self.data_manager.scale:
-            self.scaler = self.data_manager.scaler
-            self.label_scaler = self.data_manager.label_vel_scaler
-        else:
-            self.scaler = None
-            self.label_scaler = None
+        self.scaler = self.data_manager.scaler if self.data_manager.scale else None
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logging.info(f'Using device: {self.device}')
@@ -61,8 +48,6 @@ class NNCapsule:
         self.train_losses = []
         self.val_losses = []
 
-        # Set up logging
-        setup_logging(log_file='train_nn.log')
         self._log_summary()
 
     def _log_summary(self):
@@ -81,9 +66,8 @@ class NNCapsule:
             for inputs, targets in self.train_loader:
                 inputs, targets = inputs.to(self.device, non_blocking=True), targets.to(self.device, non_blocking=True)
                 self.optimizer.zero_grad()
-                with torch.amp.autocast(self.device.type):
-                    outputs = self.model(inputs)
-                    loss = self.criterion(outputs, targets)
+                outputs = self.model(inputs)
+                loss = self.criterion(outputs, targets)
                 loss.backward()
                 self.optimizer.step()
                 running_loss += loss.detach()
@@ -97,8 +81,8 @@ class NNCapsule:
                     inputs, targets = inputs.to(self.device, non_blocking=True), targets.to(self.device, non_blocking=True)
                     outputs = self.model(inputs)
                     loss = self.criterion(outputs, targets)
-                    val_loss += loss.item()
-            self.val_losses.append(val_loss / len(self.val_loader))
+                    val_loss += loss.detach()
+            self.val_losses.append(val_loss.item() / len(self.val_loader))
 
             logging.info(f"Epoch {epoch+1}, Train Loss: {self.train_losses[-1]:.2e}, Val Loss: {self.val_losses[-1]:.2e}")
 
@@ -132,8 +116,8 @@ class NNCapsule:
 
         # Unscale the true values and predictions
         if (self.data_manager.scale):
-            predictions = self.label_scaler.inverse_transform(predictions)
-            true_values = self.label_scaler.inverse_transform(true_values)
+            predictions = self.scaler.label_scaler.inverse_transform(predictions)
+            true_values = self.scaler.label_scaler.inverse_transform(true_values)
 
             predictions = torch.tensor(predictions)
             true_values = torch.tensor(true_values)
@@ -161,9 +145,9 @@ class NNCapsule:
 
         # Unscale the true values, predictions and inputs
         if (self.data_manager.scale):
-            predictions = torch.tensor(self.label_scaler.inverse_transform(predictions))
-            true_values = torch.tensor(self.label_scaler.inverse_transform(true_values))
-            inputs_all = self.scaler.inverse_transform(inputs_all)
+            predictions = torch.tensor(self.scaler.label_scaler.inverse_transform(predictions))
+            true_values = torch.tensor(self.scaler.label_scaler.inverse_transform(true_values))
+            inputs_all = self.scaler.feature_scaler.inverse_transform(inputs_all)
 
         # Save to a CSV file
         df = pd.DataFrame({
@@ -181,23 +165,17 @@ class NNCapsule:
         logging.info(f"True values, predictions, and inputs saved to {path}")
     
     def save_model(self, path):
-        model_recreator = {
-            'state_dict': self.model.state_dict(),
-            'architecture': self.architecture,
-            'n_features': self.n_features,
-            'n_labels': self.n_labels,
-            'scaler': self.scaler
-        }
-
-        with open(path, 'wb') as f:
-            pickle.dump(model_recreator, f)                 
+        torch.save(self.model.state_dict(), path)      
+        logging.info(f"Model saved to {path}")           
 
 def train_save_eval(arguments):
     nn_capsule = NNCapsule(arguments)
 
     nn_capsule.train()
     nn_capsule.plot_train_losses(nn_capsule.train_losses, nn_capsule.val_losses)
-    #nn_capsule.save_model(arguments['results_path'] + 'nn_model_recreator.pkl')
+
+    if arguments['save_model']:
+        nn_capsule.save_model(arguments['results_path'] + 'model.pkl')
 
     if arguments['save_data']:
         nn_capsule.data_manager.save_datasets(arguments['results_path'] + 'data_splits/')

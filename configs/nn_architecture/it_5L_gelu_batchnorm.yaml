@@ -1,0 +1,41 @@
+model:
+  fc1:
+    type: Linear
+    args: [999, 32]
+  relu1:
+    type: GELU
+    args: []
+  bn1:
+    type: BatchNorm1d
+    args: [32]
+  fc2:
+    type: Linear
+    args: [32, 64]
+  relu2:
+    type: GELU
+    args: []
+  bn2:
+    type: BatchNorm1d
+    args: [64]
+  fc3:
+    type: Linear
+    args: [64, 64]
+  relu3:
+    type: GELU
+    args: []
+  bn3:
+    type: BatchNorm1d
+    args: [64]
+  fc4:
+    type: Linear
+    args: [64, 32]
+  relu4:
+    type: GELU
+    args: []
+  bn4:
+    type: BatchNorm1d
+    args: [32]
+  fc5:
+    type: Linear
+    args: [32, 999]
+  

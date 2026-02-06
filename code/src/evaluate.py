@@ -1,4 +1,3 @@
-import os
 import json
 from pathlib import Path
 from typing import Optional, Tuple
@@ -36,7 +35,10 @@ def load_df(
 
 
 def metrics(df: pd.DataFrame) -> dict:
-    """Compute evaluation metrics between true and predicted values."""
+    """
+    Compute evaluation metrics between true and predicted values.
+    It is assumed that labels are change in velocity, rather than the net velocity.
+    """
 
     # Compute vector magnitudes
     y_true = torch.hypot(torch.tensor(df[TRUE_COL]), torch.tensor(df[TRUE_COL_V]))
@@ -46,7 +48,11 @@ def metrics(df: pd.DataFrame) -> dict:
     values["mse"] = F.mse_loss(y_pred, y_true)
     values["mae"] = F.l1_loss(y_pred, y_true)
     values["rmse_cms"] = torch.sqrt(values["mse"]) * 100
-    values["skill"] = values["mae"] / F.l1_loss(torch.zeros_like(y_true), y_true)
+    values["skill"] = 1 - values["mse"] / F.mse_loss(torch.zeros_like(y_true), y_true)
+
+    true_dev = y_true - torch.mean(y_true)
+    pred_dev = y_pred - torch.mean(y_pred)
+    values["acc"] = torch.sum(true_dev * pred_dev) / torch.sqrt(torch.sum(true_dev ** 2) * torch.sum(pred_dev ** 2))
 
     for key, value in values.items():
         values[key] = value.item()
@@ -144,8 +150,8 @@ def plot_hexbin(
     cb = fig.colorbar(hb, ax=ax)
     cb.set_label("log10(N)")
 
-    mn = df[[true_col, pred_col]].min().min()
-    mx = df[[true_col, pred_col]].max().max()
+    mn = df[[true_col, pred_col]].min().min() if extent is None else extent[0]
+    mx = df[[true_col, pred_col]].max().max() if extent is None else extent[1]
     ax.plot([mn, mx], [mn, mx], "r--", linewidth=1, label="1:1")
 
     fig.set_size_inches(10, 10)
@@ -221,33 +227,25 @@ def plot_hist(
     ax.legend(loc="best", fontsize="small")
     return fig, ax
 
-
 def plot_polar_map(
-    df: pd.DataFrame,
-    ds: xr.Dataset,
-    base_stride=1_000_000,
-    quiver_stride=8,
-    hemisphere="north",
-    resolution=1024,
-    lat_cutoff=80,
-    dist_threshold=10000
+    values: np.ndarray,
+    lat_lon: np.ndarray,
+    quiver: bool = False,
+    quiver_stride: int = 32,
+    hemisphere: str = "north",
+    resolution: int = 1024,
+    lat_cutoff: int = 50,
+    dist_threshold: int = 25000,
+    title: str = "Sea Ice Velocity MAE",
 ):
-    stride = max(1, len(df) // base_stride)
+    """Create a polar-projected map of values."""
 
-    # Extract Coordinates
-    lat = ds.coords["lat"].values[::stride]
-    lon = ds.coords["lon"].values[::stride]
+    lat, lon = lat_lon[:, 0], lat_lon[:, 1]
 
-    # Extract Vector Components (and subset them)
-    u_true = df[TRUE_COL].values[::stride]
-    v_true = df[TRUE_COL_V].values[::stride]
-    u_pred = df[PRED_COL].values[::stride]
-    v_pred = df[PRED_COL_V].values[::stride]
-
-    # Calculate scalars
-    y_true_mag = torch.hypot(torch.tensor(u_true), torch.tensor(v_true))
-    y_pred_mag = torch.hypot(torch.tensor(u_pred), torch.tensor(v_pred))
-    scalar_field = F.l1_loss(y_pred_mag, y_true_mag, reduction="none").numpy()
+    if values.ndim > 1:
+        scalar = np.hypot(values[:, 0], values[:, 1])
+    else:
+        scalar = values
 
     if hemisphere == "south":
         projection = ccrs.SouthPolarStereo()
@@ -283,23 +281,7 @@ def plot_polar_map(
         return grid
 
     # Interpolate values
-    grid_u = interpolate_and_mask(u_true - u_pred)
-    grid_v = interpolate_and_mask(v_true - v_pred)
-    grid_scalar = interpolate_and_mask(scalar_field)
-
-    # Subsample grid for quiver plot
-    quiver_slice = slice(None, None, quiver_stride), slice(None, None, quiver_stride)
-    quiver_x = grid_x_2d[quiver_slice]
-    quiver_y = grid_y_2d[quiver_slice]
-    quiver_u = grid_u[quiver_slice]
-    quiver_v = grid_v[quiver_slice]
-    quiver_speed = np.hypot(quiver_u, quiver_v)
-
-    # Unproject x/y coords back to lat/lon for accurate directions
-    quiver_geo = src_crs.transform_points(projection, quiver_x, quiver_y)
-    quiver_lon = quiver_geo[:, :, 0]
-    quiver_lat = quiver_geo[:, :, 1]
-
+    grid_scalar = interpolate_and_mask(scalar)
 
     fig = plt.figure(figsize=(10, 8))
     ax = plt.axes(projection=projection)
@@ -320,50 +302,135 @@ def plot_polar_map(
         grid_y_2d,
         grid_scalar,
         transform=projection,
-        norm=colors.LogNorm(),
+        norm=colors.LogNorm(1e-6, 1),
         cmap="viridis",
         shading="auto",
         zorder=1,
     )
     plt.colorbar(mesh, ax=ax, label="Mean Absolute Error (m/s)")
 
-    # Plot vectors
-    q = ax.quiver(
-        quiver_lon,
-        quiver_lat,
-        quiver_u,
-        quiver_v,
-        quiver_speed,
-        transform=ccrs.PlateCarree(),
-        cmap="autumn",
-        scale=0.05,
-        width=0.002,
-        headwidth=3,
-        zorder=3,
-    )
-    ax.quiverkey(q, 0.9, 0.9, 0.005, "0.05 cm/s", labelpos="N", coordinates="axes")
+    if quiver and values.ndim > 1:
+        grid_u = interpolate_and_mask(values[:, 0])
+        grid_v = interpolate_and_mask(values[:, 1])
 
-    ax.set_title("Sea Ice Velocity MAE with Direction Vectors")
+        # Subsample grid for quiver plot
+        quiver_slice = slice(None, None, quiver_stride), slice(None, None, quiver_stride)
+        quiver_x = grid_x_2d[quiver_slice]
+        quiver_y = grid_y_2d[quiver_slice]
+        quiver_u = grid_u[quiver_slice]
+        quiver_v = grid_v[quiver_slice]
+        quiver_speed = np.hypot(quiver_u, quiver_v)
+
+        quiver_u_norm = quiver_u / quiver_speed
+        quiver_v_norm = quiver_v / quiver_speed
+
+        # Unproject x/y coords back to lat/lon for accurate directions
+        quiver_geo = src_crs.transform_points(projection, quiver_x, quiver_y)
+        quiver_lon = quiver_geo[:, :, 0]
+        quiver_lat = quiver_geo[:, :, 1]
+
+        # Plot vectors
+        q = ax.quiver(
+            quiver_lon,
+            quiver_lat,
+            quiver_u_norm,
+            quiver_v_norm,
+            quiver_speed,
+            transform=ccrs.PlateCarree(),
+            cmap="autumn",
+            norm=colors.LogNorm(1e-5, 1e-1),
+            scale=50,
+            width=0.002,
+            headwidth=3,
+            zorder=3,
+        )
+        plt.colorbar(q, ax=ax, label="Vector Mean Absolute Error (m/s)")
+
+    ax.set_title(title)
     return fig, ax
 
+def plot_polar_sivelu(
+    df: pd.DataFrame,
+    ds: xr.Dataset,
+    base_stride=10_000_000,
+    **kwargs):
+    stride = max(1, len(df) // base_stride)
 
-def evaluate_and_save(csv_path: str, results_dir: str):
+    # Extract Coordinates
+    lat = ds.coords["lat"].values[::stride]
+    lon = ds.coords["lon"].values[::stride]
+    lat_lon = np.column_stack((lat, lon))
+
+    # Extract Vector Components (and subset them)
+    u_true = df[TRUE_COL].values[::stride]
+    u_pred = df[PRED_COL].values[::stride]
+    mae = np.abs(u_true - u_pred)
+
+    return plot_polar_map(mae, lat_lon, title="Sea Ice Velocity U component MAE", **kwargs)
+
+def plot_polar_sivelv(
+    df: pd.DataFrame,
+    ds: xr.Dataset,
+    base_stride=10_000_000,
+    **kwargs):
+    stride = max(1, len(df) // base_stride)
+
+    # Extract Coordinates
+    lat = ds.coords["lat"].values[::stride]
+    lon = ds.coords["lon"].values[::stride]
+    lat_lon = np.column_stack((lat, lon))
+
+    # Extract Vector Components (and subset them)
+    v_true = df[TRUE_COL_V].values[::stride]
+    v_pred = df[PRED_COL_V].values[::stride]
+    mae = np.abs(v_true - v_pred)
+
+    return plot_polar_map(mae, lat_lon, title="Sea Ice Velocity V component MAE", **kwargs)
+
+def plot_polar_vectors(
+    df: pd.DataFrame,
+    ds: xr.Dataset,
+    base_stride=10_000_000,
+    **kwargs):
+    stride = max(1, len(df) // base_stride)
+
+    # Extract Coordinates
+    lat = ds.coords["lat"].values[::stride]
+    lon = ds.coords["lon"].values[::stride]
+    lat_lon = np.column_stack((lat, lon))
+
+    # Extract Vector Components (and subset them)
+    u_true = df[TRUE_COL].values[::stride]
+    u_pred = df[PRED_COL].values[::stride]
+    v_true = df[TRUE_COL_V].values[::stride]
+    v_pred = df[PRED_COL_V].values[::stride]
+
+    # Technically not MAE because not absolute
+    error = np.column_stack((u_true - u_pred, v_true - v_pred))
+
+    return plot_polar_map(error, lat_lon, quiver=True, **kwargs)
+
+
+def evaluate_and_save(args: dict):
     """Load data, plot QQ/hexbin/hist, and save figures to results_dir."""
-    df = load_df(csv_path)
+    df = load_df(args['csv_path'])
 
-    out_dir = Path(results_dir)
+    out_dir = Path(args['eval_path'])
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Retrieve used dataset
-    with open(os.path.join(results_dir, "used_training_config.yaml"), "r") as file:
+    with open(out_dir / 'used_training_config.yaml', 'r') as file:
         config = yaml.safe_load(file)
-    ds = xr.open_zarr(config["pairs_path"])
+    ds = xr.open_zarr(config['pairs_path'])
     indices = df[INDICES_COL].to_numpy()
     ds = ds.isel(z=indices)
 
     # Metrics
     metrics_results = metrics(df)
-    print(f"Metrics: {metrics_results}")
+    print("Metrics:")
+    for key, value in metrics_results.items():
+        print(f"    {key}: {value}")
+
     with open(out_dir / "metrics.json", "w") as f:
         f.write(json.dumps(metrics_results, indent=4))
 
@@ -376,7 +443,7 @@ def evaluate_and_save(csv_path: str, results_dir: str):
 
     # Hexbin
     print("hexbin")
-    fig, _ = plot_hexbin(df)
+    fig, _ = plot_hexbin(df, extent=[-0.1, 0.1, -0.1, 0.1])
     hex_path = out_dir / "hexbin.png"
     fig.savefig(hex_path, dpi=200, bbox_inches="tight")
     plt.close(fig)
@@ -388,18 +455,28 @@ def evaluate_and_save(csv_path: str, results_dir: str):
     fig.savefig(hist_path, dpi=200, bbox_inches="tight")
     plt.close(fig)
 
-    # MAE Polar Map
-    print("polar map")
-    fig, _ = plot_polar_map(
+    # MAE Polar Maps
+
+    print("sivelu polar map")
+    fig, _ = plot_polar_sivelu(
+        df, ds, hemisphere=config.get("hemisphere", "north")
+    )
+    polar_path = out_dir / "polar_map_u.png"
+    fig.savefig(polar_path, dpi=600, bbox_inches="tight")
+    plt.close(fig)
+
+    print("sivelv polar map")
+    fig, _ = plot_polar_sivelv(
+        df, ds, hemisphere=config.get("hemisphere", "north")
+    )
+    polar_path = out_dir / "polar_map_v.png"
+    fig.savefig(polar_path, dpi=600, bbox_inches="tight")
+    plt.close(fig)
+
+    print("sivel polar map")
+    fig, _ = plot_polar_vectors(
         df, ds, hemisphere=config.get("hemisphere", "north")
     )
     polar_path = out_dir / "polar_map.png"
     fig.savefig(polar_path, dpi=600, bbox_inches="tight")
     plt.close(fig)
-
-    return {
-        "qq": str(qq_path),
-        "hexbin": str(hex_path),
-        "hist": str(hist_path),
-        "polar_map": str(polar_path),
-    }

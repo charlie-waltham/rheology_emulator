@@ -1,7 +1,0 @@
-# Paths, relative to /code where main.py is run
-pairs_path: ../data/processed/dq557_1ts_slim.pkl
-parameters: ../configs/parameters/nn_base.yaml
-results_path: ../results/nn/base/
-architecture: ../configs/nn_architecture/base_leaky.yaml
-
-# TODO: add features, labels, batch size, scaler, val frac, test frac, epochs

@@ -1,0 +1,19 @@
+pairs_path: ../data/processed/arctic/all/9.zarr
+parameters: ../configs/parameters/nn_test.yaml
+results_path: ../results/nn/arctic-tests/all/9/
+architecture: ../configs/nn_architecture/it_5L_gelu_batchnorm.yaml
+
+save_model: True
+save_data: True
+save_val: True
+
+train_features: ['siconc', 'sithic', 'sivelv', 'sivelu', 'utau_ai', 'utau_oi', 'vtau_ai', 'vtau_oi']
+train_labels: ['sivelv', 'sivelu']
+
+zarr_fmt: fmt2
+difference_labels: True
+scale_features: True
+
+batch_size: 8192
+val_fraction: 0.2
+test_fraction: 0.1

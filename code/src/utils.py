@@ -2,15 +2,10 @@
 # so like siconc(t), siconc(t+1), sivelv(t) -> sivelv(t+1)
 # 
 import argparse as ap
-import pickle
 import random
-import warnings
-import pprint
 import torch
 import yaml
 
-import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 import xarray as xr
 import torch.nn as nn
@@ -113,7 +108,7 @@ def make_test_train(pairs, args):
                             (pd.DataFrame(pair[0].to_array().values.T), 
                             pd.DataFrame(pair[1].to_array().values.reshape(-1, ))) 
                             )
-        except:
+        except Exception:
             pairs_df.append( 
                             (pd.DataFrame(pair[0].to_array().values.T), 
                             pd.DataFrame(pair[1].values.reshape(-1, )))
