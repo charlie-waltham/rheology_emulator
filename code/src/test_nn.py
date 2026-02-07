@@ -1,8 +1,10 @@
 import logging
 from pathlib import Path
+import pickle
 
 import torch
 import pandas as pd
+from captum.attr import DeepLiftShap
 
 from .data_managers.fmt2 import TorchDataManager
 from . import utils
@@ -22,13 +24,13 @@ class NNCapsule:
         self.n_labels = self.data_manager.n_labels
         self.n_samples = self.data_manager.n_test
 
-        # Run testing on CPU to reduce start-up / shutdown times
-        self.device = torch.device("cpu")
-
         model_path = Path(arguments["eval_path"]) / "model.pkl"
         if not model_path.exists():
             logging.error(f"Model not found at {model_path}")
             return
+
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        logging.info(f"Using device: {self.device}")
 
         self.model = utils.define_nn(
             self.architecture, self.n_features, self.n_labels, self.device
@@ -123,10 +125,10 @@ class NNCapsule:
         # Save to a CSV file
         df = pd.DataFrame(
             {
-                "true_sivelu": true_values.numpy()[:, 0].flatten(),
-                "true_sivelv": true_values.numpy()[:, 1].flatten(),
-                "pred_sivelu": predictions.numpy()[:, 0].flatten(),
-                "pred_sivelv": predictions.numpy()[:, 1].flatten(),
+                "true_sivelu": true_values.numpy()[:, 1].flatten(),
+                "true_sivelv": true_values.numpy()[:, 0].flatten(),
+                "pred_sivelu": predictions.numpy()[:, 1].flatten(),
+                "pred_sivelv": predictions.numpy()[:, 0].flatten(),
                 "indices": indices,
             }
         )
@@ -137,6 +139,33 @@ class NNCapsule:
         df.to_csv(path, index=False)
         logging.info(f"True values, predictions, and inputs saved to {path}")
 
+    def save_attributions(self, path, n_baseline=100, n_samples=1000, batch_size=50):
+        features = self.data_manager.dataset.features
+
+        baseline_indices = torch.randperm(len(features))[:n_baseline]
+        indices = torch.randperm(len(features))[:n_samples]
+        baseline_features = features[baseline_indices].to(self.device)
+        attr_features = features[indices].to(self.device)
+
+        self.model.eval()
+        explainer = DeepLiftShap(self.model)
+
+        results = {}
+        for target_label in range(self.n_labels):
+            attributions_list = []
+            for i in range(0, len(attr_features), batch_size):
+                logging.info(f"Processing batch {i // batch_size + 1}/{len(attr_features) // batch_size} for label {target_label}")
+                batch_attr = explainer.attribute(
+                    attr_features[i : i + batch_size], baseline_features, target=target_label
+                )
+                attributions_list.append(batch_attr.cpu().detach())
+
+            attributions = torch.cat(attributions_list, dim=0)
+            results[target_label] = attributions.numpy()
+
+        pickle.dump(results, open(path, "wb"))
+        logging.info(f"Attributions saved to {path}")
+
 
 def test_save_eval(arguments):
     nn_capsule = NNCapsule(arguments)
@@ -145,3 +174,5 @@ def test_save_eval(arguments):
     nn_capsule.save_ytrue_ypred_inputs(
         nn_capsule.test_loader, arguments["eval_path"] + "/ytrue_ypred_test.csv"
     )
+
+    nn_capsule.save_attributions(arguments["eval_path"] + "/attributions.pkl")

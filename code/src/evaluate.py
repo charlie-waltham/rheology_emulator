@@ -1,10 +1,12 @@
 import json
+import pickle
 from pathlib import Path
 from typing import Optional, Tuple
 
 import numpy as np
 import pandas as pd
 import xarray as xr
+from matplotlib.axes import Axes
 import matplotlib.pyplot as plt
 import matplotlib.path as mpath
 import matplotlib.colors as colors
@@ -419,7 +421,7 @@ def plot_polar_vectors(
 
 
 def evaluate_and_save(args: dict):
-    """Load data, plot QQ/hexbin/hist, and save figures to results_dir."""
+    """Load data, plot QQ/hexbin/hist etc., and save figures to results_dir."""
     df = load_df(args["csv_path"])
 
     out_dir = Path(args["eval_path"])
@@ -480,4 +482,18 @@ def evaluate_and_save(args: dict):
     fig, _ = plot_polar_vectors(df, ds, hemisphere=config.get("hemisphere", "north"))
     polar_path = out_dir / "polar_map.png"
     fig.savefig(polar_path, dpi=600, bbox_inches="tight")
+    plt.close(fig)
+
+    print("attributions")
+    attributions: dict = pickle.load(open(args["eval_path"] + "/attributions.pkl", "rb"))
+    fig, axs = plt.subplots(1, len(attributions), figsize=(20, 10))
+    for key, val in attributions.items():
+        ax: Axes = axs[int(key)]
+        mean_vals = np.mean(val, axis=0)
+
+        ax.bar(config["train_features"], mean_vals)
+        ax.set_title(f"Attributions for label {config["train_labels"][int(key)]}")
+    
+    attributions_path = out_dir / "attributions.png"
+    fig.savefig(attributions_path, dpi=600, bbox_inches="tight")
     plt.close(fig)

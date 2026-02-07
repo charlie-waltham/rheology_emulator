@@ -151,7 +151,6 @@ def set_seed(seed):
 
 
 def setup_logging(log_file="main.log"):
-
     # Delete the log file if it exists already
     if os.path.exists(log_file):
         logging.shutdown()

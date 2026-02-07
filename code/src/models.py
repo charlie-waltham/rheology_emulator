@@ -53,7 +53,8 @@ class ResBlockMLP(nn.Module):
 
         out = self.dropout(out)
 
-        out += residual
+        # https://github.com/shap/shap/issues/3466
+        out = out + residual
         return out
 
 

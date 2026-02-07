@@ -1,5 +1,5 @@
 # Paths, relative to /code where main.py is run
-pairs_path: ../data/processed/arctic/80deg/all.zarr
+pairs_path: ../data/processed/arctic/all/all.zarr
 parameters: ../configs/parameters/nn_shrinkage.yaml
 results_path: ../results/nn/charlie/80deg/resnet/
 architecture: ../configs/nn_architecture/resnet.yaml
@@ -17,3 +17,4 @@ scale_features: True
 
 batch_size: 8192
 test_fraction: 0.1
+shorten_dataset: 1000000

@@ -178,10 +178,10 @@ class NNCapsule:
         # Save to a CSV file
         df = pd.DataFrame(
             {
-                "true_sivelu": true_values.numpy()[:, 0].flatten(),
-                "true_sivelv": true_values.numpy()[:, 1].flatten(),
-                "pred_sivelu": predictions.numpy()[:, 0].flatten(),
-                "pred_sivelv": predictions.numpy()[:, 1].flatten(),
+                "true_sivelu": true_values.numpy()[:, 1].flatten(),
+                "true_sivelv": true_values.numpy()[:, 0].flatten(),
+                "pred_sivelu": predictions.numpy()[:, 1].flatten(),
+                "pred_sivelv": predictions.numpy()[:, 0].flatten(),
                 "indices": indices,
             }
         )
