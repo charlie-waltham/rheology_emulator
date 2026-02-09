@@ -12,14 +12,13 @@ Alternatively, if more memory is needed, use the provided make_pairs.sh script t
 ./make_pairs.sh <config_name>
 """
 
-import yaml
-import sys
 import shutil
-
-import xarray as xr
-import numpy as np
-
+import sys
 from pathlib import Path
+
+import numpy as np
+import xarray as xr
+import yaml
 
 
 def read_cfg(cfg_name):
@@ -27,7 +26,7 @@ def read_cfg(cfg_name):
     if cfg_name.endswith(".yaml"):
         cfg_name = cfg_name[:-5]
     cfg_path = "../configs/data_gathering/" + cfg_name + ".yaml"
-    with open(cfg_path, "r") as f:
+    with open(cfg_path) as f:
         cfg = yaml.safe_load(f)
     return cfg
 

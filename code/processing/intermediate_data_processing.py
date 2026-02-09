@@ -1,6 +1,7 @@
 import sys
-import xarray as xr
+
 import numpy as np
+import xarray as xr
 
 
 def process_intermediate_data(input_file, output_file, label, threshold):

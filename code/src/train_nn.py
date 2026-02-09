@@ -1,9 +1,8 @@
 import logging
 
-import torch
-
-import pandas as pd
 import matplotlib.pyplot as plt
+import pandas as pd
+import torch
 
 from . import utils
 
@@ -53,7 +52,7 @@ class NNCapsule:
         self.model = utils.define_nn(
             self.architecture, self.n_features, self.n_labels, self.device
         )
-        # TODO: split the below up so that they're called separately, or do some order agnostic unpacking of all the parameters
+
         self.criterion, self.optimizer, self.n_epochs = utils.nn_options(
             self.model, self.parameters
         )

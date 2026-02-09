@@ -1,10 +1,10 @@
-import os
 import json
+import os
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-from matplotlib.dates import MonthLocator, DateFormatter
 import numpy as np
+from matplotlib.dates import DateFormatter, MonthLocator
 
 runs = []
 for i in range(1, 13):
@@ -12,7 +12,7 @@ for i in range(1, 13):
     run = next(path.iterdir())
 
     metrics_file = os.path.join(run, "metrics.json")
-    with open(metrics_file, "r") as f:
+    with open(metrics_file) as f:
         runs.append(json.loads(f.read()))
 
 metrics = {}

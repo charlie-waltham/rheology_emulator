@@ -10,7 +10,7 @@ class ShrinkageLoss(nn.Module):
     """
 
     def __init__(self, a=10, c=0.2, reduction="mean"):
-        super(ShrinkageLoss, self).__init__()
+        super().__init__()
         self.a = a
         self.c = c
         self.reduction = reduction

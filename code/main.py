@@ -1,13 +1,15 @@
 import argparse
 import logging
-import numpy
-import random
-import shutil
-import torch
 import os
 import pprint
-import yaml
+import random
+import shutil
 from datetime import datetime
+
+import numpy
+import torch
+import yaml
+from matplotlib import pyplot as plt
 
 
 def parse_arguments():
@@ -167,7 +169,7 @@ def setup_logging(log_file="main.log"):
 
 
 def load_config(config_path, arguments):
-    with open(config_path, "r") as file:
+    with open(config_path) as file:
         config = yaml.safe_load(file)
 
     arguments.update(config)
@@ -261,6 +263,7 @@ def main():
         return
 
     setup_logging()
+    plt.style.use("seaborn-v0_8")
 
     if args["train"]:
         train_model(args)

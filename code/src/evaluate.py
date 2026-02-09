@@ -1,21 +1,20 @@
 import json
 import pickle
 from pathlib import Path
-from typing import Optional, Tuple
 
-import numpy as np
-import pandas as pd
-import xarray as xr
-import matplotlib.pyplot as plt
-import matplotlib.path as mpath
-import matplotlib.colors as colors
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
-from scipy.interpolate import griddata
-from scipy.spatial import cKDTree
-import yaml
+import matplotlib.colors as colors
+import matplotlib.path as mpath
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 import torch
 import torch.nn.functional as F
+import xarray as xr
+import yaml
+from scipy.interpolate import griddata
+from scipy.spatial import cKDTree
 
 TRUE_COL = "true_sivelu"
 PRED_COL = "pred_sivelu"
@@ -68,8 +67,8 @@ def plot_qq(
     true_col: str = TRUE_COL,
     pred_col: str = PRED_COL,
     quantiles: int = 200,
-    xylim: Optional[float] = None,
-    ax: Optional[plt.Axes] = None,
+    xylim: float | None = None,
+    ax: plt.Axes | None = None,
 ):
     """Create a QQ plot of predictions vs true values and return fig, ax."""
     if ax is None:
@@ -133,8 +132,8 @@ def plot_hexbin(
     true_col: str = TRUE_COL,
     pred_col: str = PRED_COL,
     gridsize: int = 60,
-    extent: Optional[Tuple[float, float, float, float]] = None,
-    ax: Optional[plt.Axes] = None,
+    extent: tuple[float, float, float, float] | None = None,
+    ax: plt.Axes | None = None,
 ):
     """Create a hexbin scatter plot with log color scale."""
     if ax is None:
@@ -171,9 +170,9 @@ def plot_hist(
     true_col: str = TRUE_COL,
     pred_col: str = PRED_COL,
     bins: int = 80,
-    x_range: Optional[Tuple[float, float]] = None,
+    x_range: tuple[float, float] | None = None,
     density: bool = True,
-    ax: Optional[plt.Axes] = None,
+    ax: plt.Axes | None = None,
 ):
     """Plot normalized histograms of true and predicted values."""
     if ax is None:
@@ -246,10 +245,7 @@ def plot_polar_map(
 
     lat, lon = lat_lon[:, 0], lat_lon[:, 1]
 
-    if values.ndim > 1:
-        scalar = np.hypot(values[:, 0], values[:, 1])
-    else:
-        scalar = values
+    scalar = np.hypot(values[:, 0], values[:, 1]) if values.ndim > 1 else values
 
     if hemisphere == "south":
         projection = ccrs.SouthPolarStereo()
@@ -420,9 +416,9 @@ def plot_polar_vectors(
 
 
 def attributions(args: dict, config: dict):
-    attributions: dict = pickle.load(
-        open(args["eval_path"] + "/attributions.pkl", "rb")
-    )
+    with open(args["eval_path"] + "/attributions.pkl", "rb") as file:
+        attributions: dict = pickle.load(file)
+
     x = np.arange(len(config["train_features"]))
     width = 1.0 / (len(config["train_labels"]) + 1)
 
@@ -444,15 +440,13 @@ def attributions(args: dict, config: dict):
 
 def evaluate_and_save(args: dict):
     """Load data, plot QQ/hexbin/hist etc., and save figures to results_dir."""
-    plt.style.use("seaborn-v0_8")
-
     df = load_df(args["csv_path"])
 
     out_dir = Path(args["eval_path"])
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Retrieve used dataset
-    with open(out_dir / "used_training_config.yaml", "r") as file:
+    with open(out_dir / "used_training_config.yaml") as file:
         config = yaml.safe_load(file)
     ds = xr.open_zarr(config["pairs_path"])
     indices = df[INDICES_COL].to_numpy()

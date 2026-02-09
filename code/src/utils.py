@@ -3,13 +3,13 @@
 #
 import argparse as ap
 import random
-import torch
-import yaml
 
 import pandas as pd
-import xarray as xr
+import torch
 import torch.nn as nn
 import torch.optim as optim
+import xarray as xr
+import yaml
 
 from . import models
 
@@ -262,7 +262,7 @@ def define_nn(architecture, n_features, n_labels, device):
 
 
 def nn_layer_list(config_path="../configs/nn_architecture/base.yaml"):
-    with open(config_path, "r") as f:
+    with open(config_path) as f:
         config = yaml.safe_load(f)["model"]
     layer_list = []
     for item in config:
@@ -304,7 +304,7 @@ def nn_options(model, parameters="../configs/parameters/nn_base.yaml"):
         raise ValueError("An architecture YAML file must be provided.")
 
     # Load the YAML configuration
-    with open(parameters, "r") as f:
+    with open(parameters) as f:
         config = yaml.safe_load(f)
 
     # Define the loss function

@@ -1,13 +1,13 @@
 import logging
-from pathlib import Path
 import pickle
+from pathlib import Path
 
-import torch
 import pandas as pd
+import torch
 from captum.attr import DeepLiftShap
 
-from .data_managers.fmt2 import TorchDataManager
 from . import utils
+from .data_managers.fmt2 import TorchDataManager
 
 
 class NNCapsule:
@@ -141,7 +141,8 @@ class NNCapsule:
             attributions = torch.cat(attributions_list, dim=0)
             results[target_label] = attributions.numpy()
 
-        pickle.dump(results, open(path, "wb"))
+        with open(path, "wb") as file:
+            pickle.dump(results, file)
         logging.info(f"Attributions saved to {path}")
 
 

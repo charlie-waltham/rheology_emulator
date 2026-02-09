@@ -1,7 +1,7 @@
-import sys
 import os
+import sys
 
-from main import set_seed, setup_logging, train_model, test_model, evaluate_model
+from main import evaluate_model, set_seed, setup_logging, test_model, train_model
 
 
 def train_test_eval(cfg: str, seed: int = 0):

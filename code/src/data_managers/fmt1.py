@@ -1,11 +1,10 @@
 import math
-import torch
 
-import xarray as xr
 import pandas as pd
-
+import torch
+import xarray as xr
 from sklearn.preprocessing import StandardScaler
-from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.data import DataLoader, Dataset, random_split
 
 
 class TorchDataManager:
@@ -93,7 +92,7 @@ class TorchDataManager:
         labels = pairs["labels"].sel(label=self.train_labels)
 
         if self.difference_labels:
-            for ilabel, label in enumerate(self.train_labels):
+            for _, label in enumerate(self.train_labels):
                 if label in self.train_features:
                     new_label_values = (
                         labels.sel(label=label).values

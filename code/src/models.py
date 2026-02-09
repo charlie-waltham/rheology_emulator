@@ -3,7 +3,7 @@ import torch.nn as nn
 
 class SIVTransformer(nn.Transformer):
     def __init__(self, num_features, num_labels, num_heads=8, activation="relu"):
-        super(SIVTransformer, self).__init__(
+        super().__init__(
             d_model=num_features,
             nhead=num_heads,
             batch_first=True,
@@ -21,7 +21,7 @@ class SIVTransformer(nn.Transformer):
 
 class ResBlockMLP(nn.Module):
     def __init__(self, in_features, out_features, dropout):
-        super(ResBlockMLP, self).__init__()
+        super().__init__()
 
         self.lin1 = nn.Linear(in_features, out_features, bias=False)
         self.bn1 = nn.BatchNorm1d(out_features)
@@ -60,7 +60,7 @@ class ResBlockMLP(nn.Module):
 
 class MultiResBlockMLP(nn.Module):
     def __init__(self, in_features, out_features, dropout, num_blocks):
-        super(MultiResBlockMLP, self).__init__()
+        super().__init__()
 
         layers = []
         layers.append(ResBlockMLP(in_features, out_features, dropout))
