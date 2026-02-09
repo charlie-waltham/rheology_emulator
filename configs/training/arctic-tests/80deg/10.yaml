@@ -1,7 +1,7 @@
 pairs_path: ../data/processed/arctic/80deg/10.zarr
 parameters: ../configs/parameters/nn_test.yaml
 results_path: ../results/nn/arctic-tests/80deg/10/
-architecture: ../configs/nn_architecture/it_5L_gelu_batchnorm.yaml
+architecture: ../configs/nn_architecture/resnet.yaml
 
 save_model: True
 save_data: True

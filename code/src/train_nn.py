@@ -122,30 +122,6 @@ class NNCapsule:
         logging.info("Training losses plotted and saved.")
         return fig
 
-    def ytrue_ypred(self, loader):
-        predictions = []
-        true_values = []
-        with torch.no_grad():
-            for inputs, targets in loader:
-                inputs = inputs.to(self.device)
-                outputs = self.model(inputs)
-                predictions.append(outputs)
-                true_values.append(targets)
-
-        # Concatenate all batches into single tensors
-        predictions = torch.cat(predictions, dim=0).to("cpu")
-        true_values = torch.cat(true_values, dim=0).to("cpu")
-
-        # Unscale the true values and predictions
-        if self.data_manager.scale:
-            predictions = self.scaler.label_scaler.inverse_transform(predictions)
-            true_values = self.scaler.label_scaler.inverse_transform(true_values)
-
-            predictions = torch.tensor(predictions)
-            true_values = torch.tensor(true_values)
-
-        return true_values, predictions
-
     def save_ytrue_ypred_inputs(self, loader, path):
         predictions = []
         true_values = []

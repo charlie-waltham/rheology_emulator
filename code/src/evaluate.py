@@ -6,7 +6,6 @@ from typing import Optional, Tuple
 import numpy as np
 import pandas as pd
 import xarray as xr
-from matplotlib.axes import Axes
 import matplotlib.pyplot as plt
 import matplotlib.path as mpath
 import matplotlib.colors as colors
@@ -420,8 +419,33 @@ def plot_polar_vectors(
     return plot_polar_map(error, lat_lon, quiver=True, **kwargs)
 
 
+def attributions(args: dict, config: dict):
+    attributions: dict = pickle.load(
+        open(args["eval_path"] + "/attributions.pkl", "rb")
+    )
+    x = np.arange(len(config["train_features"]))
+    width = 1.0 / (len(config["train_labels"]) + 1)
+
+    fig, ax = plt.subplots(figsize=(10, 10))
+    for key, val in attributions.items():
+        mean_vals = np.abs(np.mean(val, axis=0))
+
+        ax.bar(
+            x + width * key, mean_vals, width=width, label=config["train_labels"][key]
+        )
+    ax.legend()
+    ax.set_xticks(x + width / 2, config["train_features"])
+    ax.set_title("Absolute Relative Feature Importances")
+    ax.set_xlabel("Feature")
+    ax.set_ylabel("Absolute Importance")
+
+    return fig, ax
+
+
 def evaluate_and_save(args: dict):
     """Load data, plot QQ/hexbin/hist etc., and save figures to results_dir."""
+    plt.style.use("seaborn-v0_8")
+
     df = load_df(args["csv_path"])
 
     out_dir = Path(args["eval_path"])
@@ -485,15 +509,7 @@ def evaluate_and_save(args: dict):
     plt.close(fig)
 
     print("attributions")
-    attributions: dict = pickle.load(open(args["eval_path"] + "/attributions.pkl", "rb"))
-    fig, axs = plt.subplots(1, len(attributions), figsize=(20, 10))
-    for key, val in attributions.items():
-        ax: Axes = axs[int(key)]
-        mean_vals = np.mean(val, axis=0)
-
-        ax.bar(config["train_features"], mean_vals)
-        ax.set_title(f"Attributions for label {config["train_labels"][int(key)]}")
-    
+    fig, _ = attributions(args, config)
     attributions_path = out_dir / "attributions.png"
     fig.savefig(attributions_path, dpi=600, bbox_inches="tight")
     plt.close(fig)
