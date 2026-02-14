@@ -1,7 +1,0 @@
-{
-    "_ARRAY_DIMENSIONS": [
-        "label",
-        "z"
-    ],
-    "coordinates": "lat lon pair time_features time_labels x y"
-}
