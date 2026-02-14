@@ -139,6 +139,24 @@ def parse_arguments():
         default=None,
         help="Path to CSV with 'True Values' and 'Predictions' (defaults to results_path/ytrue_ypred_test.csv)",
     )
+    parser.add_argument(
+        "--attr_baseline",
+        type=int,
+        default=100,
+        help="Number of samples to use as a baseline for attributions"
+    )
+    parser.add_argument(
+        "--attr_samples",
+        type=int,
+        default=1000,
+        help="Number of samples to use for attributions"
+    )
+    parser.add_argument(
+        "--attr_batch_size",
+        type=int,
+        default=50,
+        help="Batch size for attributions"
+    )
 
     return vars(parser.parse_args())
 

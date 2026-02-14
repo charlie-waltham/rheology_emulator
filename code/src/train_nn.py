@@ -56,6 +56,10 @@ class NNCapsule:
         self.criterion, self.optimizer, self.n_epochs = utils.nn_options(
             self.model, self.parameters
         )
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer, mode="min", factor=0.1, patience=3
+        )
+
         self.train_losses = []
         self.val_losses = []
 
@@ -69,6 +73,8 @@ class NNCapsule:
         logging.info(f"Number of batches: {self.n_batches}")
         logging.info(f"Number of features: {self.n_features}")
         logging.info(f"Number of labels: {self.n_labels}")
+        num_params = sum(p.numel() for p in self.model.parameters())
+        logging.info(f"Number of parameters: {num_params}")
 
     def train(self):
         for epoch in range(self.n_epochs):
@@ -100,6 +106,7 @@ class NNCapsule:
                     loss = self.criterion(outputs, targets)
                     val_loss += loss.detach()
             self.val_losses.append(val_loss.item() / len(self.val_loader))
+            self.scheduler.step(self.val_losses[-1])
 
             logging.info(
                 f"Epoch {epoch + 1}, Train Loss: {self.train_losses[-1]:.2e}, Val Loss: {self.val_losses[-1]:.2e}"

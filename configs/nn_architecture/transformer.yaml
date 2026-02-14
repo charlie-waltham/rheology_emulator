@@ -1,10 +1,4 @@
 model:
-  encoder1:
-    type: SIVTransformer
-    args: [999, 128]
-  encoder2:
-    type: SIVTransformer
-    args: [128, 128]
-  fc1:
-    type: Linear
-    args: [128, 999]
+  transformer:
+    type: TabularTransformer
+    args: [null, null, 64, 8, 10, 0.1]

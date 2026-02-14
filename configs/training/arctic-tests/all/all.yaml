@@ -17,3 +17,7 @@ scale_features: True
 batch_size: 8192
 val_fraction: 0.2
 test_fraction: 0.1
+
+attr_baseline: 100
+attr_samples: 10000
+attr_batch_size: 50

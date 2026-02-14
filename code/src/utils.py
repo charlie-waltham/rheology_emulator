@@ -321,8 +321,9 @@ def nn_options(model, parameters="../configs/parameters/nn_base.yaml"):
     # Define the optimizer
     optimizer_type = config.get("optimizer", "Adam")  # Default to Adam if not specified
     lr = config.get("learning_rate", 0.001)  # Default learning rate
+    weight_decay = config.get("weight_decay", 0.0)  # Default weight decay
     optimizer_class = getattr(optim, optimizer_type)
-    optimizer = optimizer_class(model.parameters(), lr=lr)
+    optimizer = optimizer_class(model.parameters(), lr=lr, weight_decay=weight_decay)
 
     # Define the number of epochs
     n_epochs = config.get("epochs", 10)  # Default to 10 epochs

@@ -50,6 +50,8 @@ class NNCapsule:
         logging.info(f"Number of samples: {self.n_samples}")
         logging.info(f"Number of features: {self.n_features}")
         logging.info(f"Number of labels: {self.n_labels}")
+        num_params = sum(p.numel() for p in self.model.parameters())
+        logging.info(f"Number of parameters: {num_params}")
 
     def test(self):
         self.model.eval()
@@ -115,11 +117,11 @@ class NNCapsule:
         df.to_csv(path, index=False)
         logging.info(f"True values, predictions, and inputs saved to {path}")
 
-    def save_attributions(self, path, n_baseline=100, n_samples=1000, batch_size=50):
+    def save_attributions(self, path):
         features = self.data_manager.dataset.features
 
-        baseline_indices = torch.randperm(len(features))[:n_baseline]
-        indices = torch.randperm(len(features))[:n_samples]
+        baseline_indices = torch.randperm(len(features))[:self.arguments["attr_baseline"]]
+        indices = torch.randperm(len(features))[:self.arguments["attr_samples"]]
         baseline_features = features[baseline_indices].to(self.device)
         attr_features = features[indices].to(self.device)
 
@@ -130,9 +132,9 @@ class NNCapsule:
         for target_label in range(self.n_labels):
             logging.info(f"Processing attributions for label {target_label}")
             attributions_list = []
-            for i in range(0, len(attr_features), batch_size):
+            for i in range(0, len(attr_features), self.arguments["attr_batch_size"]):
                 batch_attr = explainer.attribute(
-                    attr_features[i : i + batch_size],
+                    attr_features[i : i + self.arguments["attr_batch_size"]],
                     baseline_features,
                     target=target_label,
                 )
