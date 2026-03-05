@@ -8,7 +8,10 @@ dependencies = [
     "captum>=0.7.0",
     "cartopy>=0.25.0",
     "cftime>=1.6.5",
-    "dask>=2026.1.1",
+    "dask[distributed]>=2026.1.1",
+    "flox>=0.11.2",
+    "h5netcdf>=1.8.1",
+    "h5py>=3.15.1",
     "matplotlib>=3.10.8",
     "numpy>=2.4.1",
     "pandas>=2.3.3",
@@ -31,6 +34,7 @@ torch = [
 
 [dependency-groups]
 dev = [
+    "bokeh>=3.8.2",
     "ipykernel>=7.1.0",
     "ruff>=0.15.0",
 ]
@@ -50,7 +54,5 @@ select = [
     # isort
     "I",
 ]
-ignore = [
-    "E501"
-]
+ignore = ["E501"]
 exclude = ["processing"]

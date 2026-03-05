@@ -1,8 +1,8 @@
 import logging
 
 import matplotlib.pyplot as plt
-import pandas as pd
 import torch
+import xarray as xr
 
 from . import utils
 
@@ -131,20 +131,16 @@ class NNCapsule:
     def save_ytrue_ypred_inputs(self, loader, path):
         predictions = []
         true_values = []
-        inputs_list = []
         with torch.no_grad():
             for inputs, targets in loader:
                 inputs = inputs.to(self.device)
                 outputs = self.model(inputs)
                 predictions.append(outputs)
                 true_values.append(targets)
-                inputs_list.append(inputs)
 
         # Concatenate all batches into single tensors
         predictions = torch.cat(predictions, dim=0).to("cpu")
         true_values = torch.cat(true_values, dim=0).to("cpu")
-        inputs_all = torch.cat(inputs_list, dim=0).to("cpu")
-
         indices = loader.dataset.indices
 
         # Unscale the true values, predictions and inputs
@@ -155,24 +151,27 @@ class NNCapsule:
             true_values = torch.tensor(
                 self.scaler.label_scaler.inverse_transform(true_values)
             )
-            inputs_all = self.scaler.feature_scaler.inverse_transform(inputs_all)
 
-        # Save to a CSV file
-        df = pd.DataFrame(
-            {
-                "true_sivelu": true_values.numpy()[:, 1].flatten(),
-                "true_sivelv": true_values.numpy()[:, 0].flatten(),
-                "pred_sivelu": predictions.numpy()[:, 1].flatten(),
-                "pred_sivelv": predictions.numpy()[:, 0].flatten(),
-                "indices": indices,
-            }
+        # Save to netCDF
+        ds = xr.Dataset(
+            data_vars={
+                "pred": (("indices", "directions"), predictions.numpy()),
+                "true": (("indices", "directions"), true_values.numpy()),
+                "pred_magnitude": (
+                    "indices",
+                    torch.linalg.vector_norm(predictions, dim=1),
+                ),
+                "true_magnitude": (
+                    "indices",
+                    torch.linalg.vector_norm(true_values, dim=1),
+                ),
+            },
+            coords={"indices": indices, "directions": ["v", "u"]},
         )
-        # Add input features to the dataframe
-        for i in range(inputs_all.shape[1]):
-            df[f"feature_{i + 1}"] = inputs_all[:, i].flatten()
+        logging.info(ds)
+        ds.to_netcdf(path)
 
-        df.to_csv(path, index=False)
-        logging.info(f"True values, predictions, and inputs saved to {path}")
+        logging.info(f"True values and predictions saved to {path}")
 
     def save_model(self, path):
         torch.save(self.model.state_dict(), path)

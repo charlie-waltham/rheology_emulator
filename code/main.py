@@ -134,28 +134,25 @@ def parse_arguments():
         help="Path to the results directory to evaluate.",
     )
     parser.add_argument(
-        "--csv_path",
+        "--pred_path",
         type=str,
         default=None,
-        help="Path to CSV with 'True Values' and 'Predictions' (defaults to results_path/ytrue_ypred_test.csv)",
+        help="Path to CSV with 'True Values' and 'Predictions' (defaults to results_path/ytrue_ypred_test.cdf)",
     )
     parser.add_argument(
         "--attr_baseline",
         type=int,
         default=100,
-        help="Number of samples to use as a baseline for attributions"
+        help="Number of samples to use as a baseline for attributions",
     )
     parser.add_argument(
         "--attr_samples",
         type=int,
         default=1000,
-        help="Number of samples to use for attributions"
+        help="Number of samples to use for attributions",
     )
     parser.add_argument(
-        "--attr_batch_size",
-        type=int,
-        default=50,
-        help="Batch size for attributions"
+        "--attr_batch_size", type=int, default=50, help="Batch size for attributions"
     )
 
     return vars(parser.parse_args())
@@ -254,12 +251,12 @@ def test_model(args):
 
 
 def evaluate_model(args):
-    csv_path = args.get("csv_path")
-    if csv_path is None:
-        args["csv_path"] = os.path.join(args["eval_path"], "ytrue_ypred_test.csv")
+    pred_peth = args.get("pred_path")
+    if pred_peth is None:
+        args["pred_path"] = os.path.join(args["eval_path"], "ytrue_ypred_test.cdf")
 
-    if not os.path.exists(args["csv_path"]):
-        print(f"Error: CSV not found at {args['csv_path']}")
+    if not os.path.exists(args["pred_path"]):
+        print(f"Error: file not found at {args['pred_path']}")
         return
 
     from src.evaluate import evaluate_and_save
@@ -282,6 +279,7 @@ def main():
 
     setup_logging()
     plt.style.use("seaborn-v0_8")
+    plt.switch_backend("agg")
 
     if args["train"]:
         train_model(args)

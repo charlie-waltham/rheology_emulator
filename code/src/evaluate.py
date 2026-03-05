@@ -1,5 +1,8 @@
+import io
 import json
+import logging
 import pickle
+import traceback
 from pathlib import Path
 
 import cartopy.crs as ccrs
@@ -8,41 +11,24 @@ import matplotlib.colors as colors
 import matplotlib.path as mpath
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 import torch
+import torch.multiprocessing as mp
 import torch.nn.functional as F
 import xarray as xr
 import yaml
+from PIL import Image
 from scipy.interpolate import griddata
 from scipy.spatial import cKDTree
 
-TRUE_COL = "true_sivelu"
-PRED_COL = "pred_sivelu"
-TRUE_COL_V = "true_sivelv"
-PRED_COL_V = "pred_sivelv"
-INDICES_COL = "indices"
 
-
-def load_df(
-    csv_path: str, true_col: str = TRUE_COL, pred_col: str = PRED_COL
-) -> pd.DataFrame:
-    """Load a CSV and ensure it contains the expected columns."""
-    df = pd.read_csv(csv_path)
-    missing = [col for col in (true_col, pred_col) if col not in df.columns]
-    if missing:
-        raise ValueError(f"CSV missing required columns: {missing}")
-    return df
-
-
-def metrics(df: pd.DataFrame) -> dict:
+def metrics(ds: xr.Dataset) -> dict:
     """
     Compute evaluation metrics between true and predicted values.
     It is assumed that labels are change in velocity, rather than the net velocity.
     """
 
-    # Compute vector magnitudes
-    y_true = torch.hypot(torch.tensor(df[TRUE_COL]), torch.tensor(df[TRUE_COL_V]))
-    y_pred = torch.hypot(torch.tensor(df[PRED_COL]), torch.tensor(df[PRED_COL_V]))
+    y_true = torch.tensor(ds.true_magnitude.values)
+    y_pred = torch.tensor(ds.pred_magnitude.values)
 
     values = {}
     values["mse"] = F.mse_loss(y_pred, y_true)
@@ -63,9 +49,7 @@ def metrics(df: pd.DataFrame) -> dict:
 
 
 def plot_qq(
-    df: pd.DataFrame,
-    true_col: str = TRUE_COL,
-    pred_col: str = PRED_COL,
+    ds: xr.Dataset,
     quantiles: int = 200,
     xylim: float | None = None,
     ax: plt.Axes | None = None,
@@ -77,8 +61,8 @@ def plot_qq(
         fig = ax.figure
 
     q = np.linspace(0.0, 1.0, quantiles)
-    y_true = df[true_col].to_numpy()
-    y_pred = df[pred_col].to_numpy()
+    y_true = ds.true.values
+    y_pred = ds.pred.values
     q_true = np.quantile(y_true, q)
     q_pred = np.quantile(y_pred, q)
 
@@ -128,9 +112,7 @@ def plot_qq(
 
 
 def plot_hexbin(
-    df: pd.DataFrame,
-    true_col: str = TRUE_COL,
-    pred_col: str = PRED_COL,
+    ds: xr.Dataset,
     gridsize: int = 60,
     extent: tuple[float, float, float, float] | None = None,
     ax: plt.Axes | None = None,
@@ -142,8 +124,8 @@ def plot_hexbin(
         fig = ax.figure
 
     hb = ax.hexbin(
-        df[true_col],
-        df[pred_col],
+        ds.true_magnitude,
+        ds.pred_magnitude,
         gridsize=gridsize,
         bins="log",
         cmap="viridis",
@@ -152,8 +134,8 @@ def plot_hexbin(
     cb = fig.colorbar(hb, ax=ax)
     cb.set_label("log10(N)")
 
-    mn = df[[true_col, pred_col]].min().min() if extent is None else extent[0]
-    mx = df[[true_col, pred_col]].max().max() if extent is None else extent[1]
+    mn = 0 if extent is None else extent[0]
+    mx = ds.pred_magnitude.max() if extent is None else extent[1]
     ax.plot([mn, mx], [mn, mx], "r--", linewidth=1, label="1:1")
 
     fig.set_size_inches(10, 10)
@@ -166,13 +148,12 @@ def plot_hexbin(
 
 
 def plot_hist(
-    df: pd.DataFrame,
-    true_col: str = TRUE_COL,
-    pred_col: str = PRED_COL,
+    ds: xr.Dataset,
     bins: int = 80,
     x_range: tuple[float, float] | None = None,
     density: bool = True,
     ax: plt.Axes | None = None,
+    title: str = "Sea Ice Velocity True vs. Pred",
 ):
     """Plot normalized histograms of true and predicted values."""
     if ax is None:
@@ -181,8 +162,8 @@ def plot_hist(
         fig = ax.figure
     # determine plotting range: if user provided x_range, use it; otherwise
     # compute central 99.5% coverage (percentiles 0.25 and 99.75) of combined data
-    y_true = df[true_col].to_numpy()
-    y_pred = df[pred_col].to_numpy()
+    y_true = ds.true_magnitude.values
+    y_pred = ds.pred_magnitude.values
     # combine true and pred into a single 1-D array; concatenating empty arrays yields empty array
     combined = np.concatenate([y_true.ravel(), y_pred.ravel()])
 
@@ -219,9 +200,9 @@ def plot_hist(
     )
 
     fig.set_size_inches(10, 10)
+    ax.set_title(title)
     ax.set_xlabel("Value")
     ax.set_ylabel("Density" if density else "Count")
-    ax.set_title("Histogram (True vs Pred)")
     ax.set_yscale("log")
     if x_range_use is not None:
         ax.set_xlim(x_range_use)
@@ -309,6 +290,7 @@ def plot_polar_map(
     )
     plt.colorbar(mesh, ax=ax, label="Mean Absolute Error (m/s)")
 
+    # Don't use for now as u and v don't necessarily correspond to lat and lon
     if quiver and values.ndim > 1:
         grid_u = interpolate_and_mask(values[:, 0])
         grid_v = interpolate_and_mask(values[:, 1])
@@ -353,10 +335,8 @@ def plot_polar_map(
     return fig, ax
 
 
-def plot_polar_sivelu(
-    df: pd.DataFrame, ds: xr.Dataset, base_stride=10_000_000, **kwargs
-):
-    stride = max(1, len(df) // base_stride)
+def plot_polar_magnitude(ds: xr.Dataset, base_stride=1_000_000, **kwargs):
+    stride = max(1, ds.sizes["indices"] // base_stride)
 
     # Extract Coordinates
     lat = ds.coords["lat"].values[::stride]
@@ -364,55 +344,101 @@ def plot_polar_sivelu(
     lat_lon = np.column_stack((lat, lon))
 
     # Extract Vector Components (and subset them)
-    u_true = df[TRUE_COL].values[::stride]
-    u_pred = df[PRED_COL].values[::stride]
-    mae = np.abs(u_true - u_pred)
-
-    return plot_polar_map(
-        mae, lat_lon, title="Sea Ice Velocity U component MAE", **kwargs
-    )
-
-
-def plot_polar_sivelv(
-    df: pd.DataFrame, ds: xr.Dataset, base_stride=10_000_000, **kwargs
-):
-    stride = max(1, len(df) // base_stride)
-
-    # Extract Coordinates
-    lat = ds.coords["lat"].values[::stride]
-    lon = ds.coords["lon"].values[::stride]
-    lat_lon = np.column_stack((lat, lon))
-
-    # Extract Vector Components (and subset them)
-    v_true = df[TRUE_COL_V].values[::stride]
-    v_pred = df[PRED_COL_V].values[::stride]
-    mae = np.abs(v_true - v_pred)
-
-    return plot_polar_map(
-        mae, lat_lon, title="Sea Ice Velocity V component MAE", **kwargs
-    )
-
-
-def plot_polar_vectors(
-    df: pd.DataFrame, ds: xr.Dataset, base_stride=10_000_000, **kwargs
-):
-    stride = max(1, len(df) // base_stride)
-
-    # Extract Coordinates
-    lat = ds.coords["lat"].values[::stride]
-    lon = ds.coords["lon"].values[::stride]
-    lat_lon = np.column_stack((lat, lon))
-
-    # Extract Vector Components (and subset them)
-    u_true = df[TRUE_COL].values[::stride]
-    u_pred = df[PRED_COL].values[::stride]
-    v_true = df[TRUE_COL_V].values[::stride]
-    v_pred = df[PRED_COL_V].values[::stride]
+    u_true = ds.true.loc["u"].values[::stride]
+    v_true = ds.true.loc["v"].values[::stride]
+    u_pred = ds.pred.loc["u"].values[::stride]
+    v_pred = ds.pred.loc["v"].values[::stride]
 
     # Technically not MAE because not absolute
     error = np.column_stack((u_true - u_pred, v_true - v_pred))
 
-    return plot_polar_map(error, lat_lon, quiver=True, **kwargs)
+    return plot_polar_map(error, lat_lon, **kwargs)
+
+
+def plot_to_buffer(fig, **kwargs):
+    """https://github.com/paulgavrikov/parallel-matplotlib-grid/blob/main/parallelplot/plot.py"""
+    buf = io.BytesIO()
+    fig.savefig(buf, **kwargs)
+    buf.seek(0)
+    img = np.array(Image.open(buf))
+    buf.close()
+    plt.close(fig)
+    return img
+
+
+def _plot_month_task(month, ds_month, polar_kwargs):
+    """Helper function for multiprocessing monthly plots."""
+    print(f"Processing {month}")
+    try:
+        plt.style.use("seaborn-v0_8")
+
+        hist, _ = plot_hist(
+            ds_month,
+            density=False,
+            title=f"Sea Ice Velocity True vs. Pred - Month {month}",
+        )
+        polar_map, _ = plot_polar_magnitude(
+            ds_month,
+            title=f"Sea Ice Velocity Error - Month {month}",
+            **polar_kwargs,
+        )
+
+        figs = {
+            "hist": plot_to_buffer(hist, dpi=600, bbox_inches="tight"),
+            "polar_map": plot_to_buffer(polar_map, dpi=600, bbox_inches="tight"),
+        }
+        return figs
+    except Exception:
+        print(traceback.format_exc())
+
+
+def plot_by_month(
+    ds: xr.Dataset,
+    out_dir: Path,
+    polar_kwargs: dict = None,
+):
+    polar_kwargs = {} if polar_kwargs is None else polar_kwargs
+
+    months_dir = out_dir / "monthly"
+    months_dir.mkdir(parents=True, exist_ok=True)
+
+    logging.info("Splitting data into months")
+
+    # Compute months to memory to avoid dask grouping error
+    months = ds["time_features"].dt.month.values
+    ds = ds.assign_coords(month=("indices", months))
+    groups = ds.groupby("month")
+
+    tasks = []
+    for month, ds_group in groups:
+        ds_month = ds_group.drop_vars("month")
+        tasks.append((month, ds_month, polar_kwargs))
+
+    # Use multiprocessing to plot
+    ctx = mp.get_context("spawn")
+    with ctx.Pool(processes=len(tasks)) as pool:
+        month_figs = pool.starmap(_plot_month_task, tasks)
+
+    hist_fig, hist_axs = plt.subplots(4, 3, figsize=(15, 20))
+    polar_fig, polar_axs = plt.subplots(4, 3, figsize=(15, 20))
+
+    hist_axs = hist_axs.flatten()
+    polar_axs = polar_axs.flatten()
+
+    for i in range(len(month_figs)):
+        figures = month_figs[i]
+        hist_axs[i].grid(False)
+        hist_axs[i].axis("off")
+        polar_axs[i].grid(False)
+        polar_axs[i].axis("off")
+
+        hist_axs[i].imshow(figures["hist"])
+        polar_axs[i].imshow(figures["polar_map"])
+
+    hist_fig.savefig(months_dir / "hist.png", dpi=600, bbox_inches="tight")
+    polar_fig.savefig(months_dir / "polar_map.png", dpi=1000, bbox_inches="tight")
+    plt.close(hist_fig)
+    plt.close(polar_fig)
 
 
 def attributions(args: dict, config: dict):
@@ -440,69 +466,64 @@ def attributions(args: dict, config: dict):
 
 def evaluate_and_save(args: dict):
     """Load data, plot QQ/hexbin/hist etc., and save figures to results_dir."""
-    df = load_df(args["csv_path"])
 
     out_dir = Path(args["eval_path"])
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    pred_ds = xr.open_dataset(args["eval_path"] + "/ytrue_ypred_test.cdf")
+
     # Retrieve used dataset
     with open(out_dir / "used_training_config.yaml") as file:
         config = yaml.safe_load(file)
-    ds = xr.open_zarr(config["pairs_path"])
-    indices = df[INDICES_COL].to_numpy()
-    ds = ds.isel(z=indices)
+    train_ds = xr.open_zarr(config["pairs_path"])
+    train_ds = train_ds.drop_vars(["features", "labels", "d_labels"])
+    indices = pred_ds.coords["indices"]
+    train_ds = train_ds.isel(z=indices)
+
+    ds = xr.combine_by_coords([train_ds, pred_ds])
 
     # Metrics
-    metrics_results = metrics(df)
-    print("Metrics:")
+    metrics_results = metrics(ds)
+    logging.info("Metrics:")
     for key, value in metrics_results.items():
-        print(f"    {key}: {value}")
+        logging.info(f"    {key}: {value}")
 
     with open(out_dir / "metrics.json", "w") as f:
         f.write(json.dumps(metrics_results, indent=4))
 
     # QQ
-    print("qq")
-    fig, _ = plot_qq(df)
+    logging.info("qq")
+    fig, _ = plot_qq(ds)
     qq_path = out_dir / "qq.png"
     fig.savefig(qq_path, dpi=200, bbox_inches="tight")
     plt.close(fig)
 
     # Hexbin
-    print("hexbin")
-    fig, _ = plot_hexbin(df, extent=[-0.1, 0.1, -0.1, 0.1])
+    logging.info("hexbin")
+    fig, _ = plot_hexbin(ds, extent=[0, 0.1, 0, 0.1])
     hex_path = out_dir / "hexbin.png"
     fig.savefig(hex_path, dpi=200, bbox_inches="tight")
     plt.close(fig)
 
     # Histogram
-    print("histogram")
-    fig, _ = plot_hist(df, density=False)
+    logging.info("histogram")
+    fig, _ = plot_hist(ds, density=False)
     hist_path = out_dir / "hist.png"
     fig.savefig(hist_path, dpi=200, bbox_inches="tight")
     plt.close(fig)
 
     # MAE Polar Maps
+    plot_by_month(
+        ds, out_dir, polar_kwargs={"hemisphere": config.get("hemisphere", "north")}
+    )
 
-    print("sivelu polar map")
-    fig, _ = plot_polar_sivelu(df, ds, hemisphere=config.get("hemisphere", "north"))
-    polar_path = out_dir / "polar_map_u.png"
-    fig.savefig(polar_path, dpi=600, bbox_inches="tight")
-    plt.close(fig)
-
-    print("sivelv polar map")
-    fig, _ = plot_polar_sivelv(df, ds, hemisphere=config.get("hemisphere", "north"))
-    polar_path = out_dir / "polar_map_v.png"
-    fig.savefig(polar_path, dpi=600, bbox_inches="tight")
-    plt.close(fig)
-
-    print("sivel polar map")
-    fig, _ = plot_polar_vectors(df, ds, hemisphere=config.get("hemisphere", "north"))
+    logging.info("sivel polar map")
+    fig, _ = plot_polar_magnitude(ds, hemisphere=config.get("hemisphere", "north"))
     polar_path = out_dir / "polar_map.png"
     fig.savefig(polar_path, dpi=600, bbox_inches="tight")
     plt.close(fig)
 
-    print("attributions")
+    logging.info("attributions")
     fig, _ = attributions(args, config)
     attributions_path = out_dir / "attributions.png"
     fig.savefig(attributions_path, dpi=600, bbox_inches="tight")
