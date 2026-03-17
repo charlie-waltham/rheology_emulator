@@ -265,9 +265,9 @@ def plot_polar_map(
     grid_scalar = interpolate_and_mask(scalar)
 
     fig = plt.figure(figsize=(10, 8))
-    ax = plt.axes(projection=projection)
+    ax = plt.axes(projection=projection, facecolor="cornflowerblue")
     ax.set_extent(extent, src_crs)
-    ax.add_feature(cfeature.LAND, zorder=2, facecolor="gray", edgecolor="black")
+    ax.add_feature(cfeature.LAND, zorder=2, facecolor="grey", edgecolor="black")
     ax.gridlines()
 
     # Circular Boundary
