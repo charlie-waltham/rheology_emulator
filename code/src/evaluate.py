@@ -157,7 +157,7 @@ def plot_hist(
 ):
     """Plot normalized histograms of true and predicted values."""
     if ax is None:
-        fig, ax = plt.subplots(figsize=(5, 4))
+        fig, ax = plt.subplots(figsize=(6, 6))
     else:
         fig = ax.figure
     # determine plotting range: if user provided x_range, use it; otherwise
@@ -199,7 +199,6 @@ def plot_hist(
         color="C1",
     )
 
-    fig.set_size_inches(10, 10)
     ax.set_title(title)
     ax.set_xlabel("Value")
     ax.set_ylabel("Density" if density else "Count")
