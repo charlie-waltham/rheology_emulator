@@ -20,6 +20,7 @@ from PIL import Image
 from scipy.interpolate import griddata
 from scipy.spatial import cKDTree
 
+FIG_SIZE = (8, 8)
 
 def metrics(ds: xr.Dataset) -> dict:
     """
@@ -31,13 +32,15 @@ def metrics(ds: xr.Dataset) -> dict:
     y_pred = torch.tensor(ds.pred_magnitude.values)
 
     values = {}
+    values["mean_true"] = torch.mean(y_true)
+    values["mean_pred"] = torch.mean(y_pred)
     values["mse"] = F.mse_loss(y_pred, y_true)
     values["mae"] = F.l1_loss(y_pred, y_true)
     values["rmse_cms"] = torch.sqrt(values["mse"]) * 100
     values["skill"] = 1 - values["mse"] / F.mse_loss(torch.zeros_like(y_true), y_true)
 
-    true_dev = y_true - torch.mean(y_true)
-    pred_dev = y_pred - torch.mean(y_pred)
+    true_dev = y_true - values["mean_true"]
+    pred_dev = y_pred - values["mean_pred"]
     values["acc"] = torch.sum(true_dev * pred_dev) / torch.sqrt(
         torch.sum(true_dev**2) * torch.sum(pred_dev**2)
     )
@@ -56,7 +59,7 @@ def plot_qq(
 ):
     """Create a QQ plot of predictions vs true values and return fig, ax."""
     if ax is None:
-        fig, ax = plt.subplots(figsize=(5, 4))
+        fig, ax = plt.subplots(figsize=FIG_SIZE)
     else:
         fig = ax.figure
 
@@ -102,7 +105,6 @@ def plot_qq(
         ax.set_xlim(mn, mx)
         ax.set_ylim(mn, mx)
 
-    fig.set_size_inches(10, 10)
     ax.set_xlabel("True quantiles")
     ax.set_ylabel("Pred quantiles")
     ax.set_title("QQ plot")
@@ -119,7 +121,7 @@ def plot_hexbin(
 ):
     """Create a hexbin scatter plot with log color scale."""
     if ax is None:
-        fig, ax = plt.subplots(figsize=(5, 4))
+        fig, ax = plt.subplots(figsize=FIG_SIZE)
     else:
         fig = ax.figure
 
@@ -138,7 +140,6 @@ def plot_hexbin(
     mx = ds.pred_magnitude.max() if extent is None else extent[1]
     ax.plot([mn, mx], [mn, mx], "r--", linewidth=1, label="1:1")
 
-    fig.set_size_inches(10, 10)
     ax.set_xlabel("True Values")
     ax.set_ylabel("Predictions")
     ax.set_title("Hexbin (Pred vs True)")
@@ -157,7 +158,7 @@ def plot_hist(
 ):
     """Plot normalized histograms of true and predicted values."""
     if ax is None:
-        fig, ax = plt.subplots(figsize=(6, 6))
+        fig, ax = plt.subplots(figsize=FIG_SIZE)
     else:
         fig = ax.figure
     # determine plotting range: if user provided x_range, use it; otherwise
@@ -418,8 +419,8 @@ def plot_by_month(
     with ctx.Pool(processes=len(tasks)) as pool:
         month_figs = pool.starmap(_plot_month_task, tasks)
 
-    hist_fig, hist_axs = plt.subplots(4, 3, figsize=(15, 20))
-    polar_fig, polar_axs = plt.subplots(4, 3, figsize=(15, 20))
+    hist_fig, hist_axs = plt.subplots(4, 3, figsize=(15, 20), gridspec_kw={"wspace": 0.05, "hspace": 0.05})
+    polar_fig, polar_axs = plt.subplots(4, 3, figsize=(15, 20), gridspec_kw={"wspace": 0.05, "hspace": 0.05})
 
     hist_axs = hist_axs.flatten()
     polar_axs = polar_axs.flatten()
@@ -447,7 +448,7 @@ def attributions(args: dict, config: dict):
     x = np.arange(len(config["train_features"]))
     width = 1.0 / (len(config["train_labels"]) + 1)
 
-    fig, ax = plt.subplots(figsize=(10, 10))
+    fig, ax = plt.subplots(figsize=FIG_SIZE)
     for key, val in attributions.items():
         mean_vals = np.abs(np.mean(val, axis=0))
 
@@ -511,6 +512,13 @@ def evaluate_and_save(args: dict):
     fig.savefig(hist_path, dpi=200, bbox_inches="tight")
     plt.close(fig)
 
+    # Attributions
+    logging.info("attributions")
+    fig, _ = attributions(args, config)
+    attributions_path = out_dir / "attributions.png"
+    fig.savefig(attributions_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+
     # MAE Polar Maps
     plot_by_month(
         ds, out_dir, polar_kwargs={"hemisphere": config.get("hemisphere", "north")}
@@ -520,10 +528,4 @@ def evaluate_and_save(args: dict):
     fig, _ = plot_polar_magnitude(ds, hemisphere=config.get("hemisphere", "north"))
     polar_path = out_dir / "polar_map.png"
     fig.savefig(polar_path, dpi=600, bbox_inches="tight")
-    plt.close(fig)
-
-    logging.info("attributions")
-    fig, _ = attributions(args, config)
-    attributions_path = out_dir / "attributions.png"
-    fig.savefig(attributions_path, dpi=600, bbox_inches="tight")
     plt.close(fig)
