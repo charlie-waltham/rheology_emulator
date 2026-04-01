@@ -143,7 +143,7 @@ class NNCapsule:
         true_values = torch.cat(true_values, dim=0).to("cpu")
         indices = loader.dataset.indices
 
-        # Unscale the true values, predictions and inputs
+        # Unscale the true values and predictions
         if self.data_manager.scale:
             predictions = torch.tensor(
                 self.scaler.label_scaler.inverse_transform(predictions)
@@ -194,7 +194,7 @@ def train_save_eval(arguments):
 
     if arguments["save_val"]:
         nn_capsule.save_ytrue_ypred_inputs(
-            nn_capsule.val_loader, arguments["results_path"] + "ytrue_ypred_val.csv"
+            nn_capsule.val_loader, arguments["results_path"] + "ytrue_ypred_val.cdf"
         )
 
     logging.info("Training complete. Results saved in: " + arguments["results_path"])

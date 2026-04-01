@@ -1,0 +1,4 @@
+loss: MSELoss
+optimizer: Adam
+learning_rate: 0.01
+epochs: 50

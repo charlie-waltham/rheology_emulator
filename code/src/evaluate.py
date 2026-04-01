@@ -22,6 +22,7 @@ from scipy.spatial import cKDTree
 
 FIG_SIZE = (8, 8)
 
+
 def metrics(ds: xr.Dataset) -> dict:
     """
     Compute evaluation metrics between true and predicted values.
@@ -419,8 +420,12 @@ def plot_by_month(
     with ctx.Pool(processes=len(tasks)) as pool:
         month_figs = pool.starmap(_plot_month_task, tasks)
 
-    hist_fig, hist_axs = plt.subplots(4, 3, figsize=(15, 20), gridspec_kw={"wspace": 0.05, "hspace": 0.05})
-    polar_fig, polar_axs = plt.subplots(4, 3, figsize=(15, 20), gridspec_kw={"wspace": 0.05, "hspace": 0.05})
+    hist_fig, hist_axs = plt.subplots(
+        4, 3, figsize=(15, 20), gridspec_kw={"wspace": 0.05, "hspace": 0.05}
+    )
+    polar_fig, polar_axs = plt.subplots(
+        4, 3, figsize=(15, 20), gridspec_kw={"wspace": 0.05, "hspace": 0.05}
+    )
 
     hist_axs = hist_axs.flatten()
     polar_axs = polar_axs.flatten()
@@ -476,7 +481,7 @@ def evaluate_and_save(args: dict):
     with open(out_dir / "used_training_config.yaml") as file:
         config = yaml.safe_load(file)
     train_ds = xr.open_zarr(config["pairs_path"])
-    train_ds = train_ds.drop_vars(["features", "labels", "d_labels"])
+    train_ds = train_ds.drop_vars(["features", "labels", "d_labels"], errors="ignore")
     indices = pred_ds.coords["indices"]
     train_ds = train_ds.isel(z=indices)
 
@@ -520,12 +525,12 @@ def evaluate_and_save(args: dict):
     plt.close(fig)
 
     # MAE Polar Maps
-    plot_by_month(
-        ds, out_dir, polar_kwargs={"hemisphere": config.get("hemisphere", "north")}
-    )
-
     logging.info("sivel polar map")
     fig, _ = plot_polar_magnitude(ds, hemisphere=config.get("hemisphere", "north"))
     polar_path = out_dir / "polar_map.png"
     fig.savefig(polar_path, dpi=600, bbox_inches="tight")
     plt.close(fig)
+
+    plot_by_month(
+        ds, out_dir, polar_kwargs={"hemisphere": config.get("hemisphere", "north")}
+    )

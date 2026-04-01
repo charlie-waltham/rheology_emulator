@@ -24,6 +24,9 @@ class NNCapsule:
         self.n_labels = self.data_manager.n_labels
         self.n_samples = self.data_manager.n_test
 
+        self.predictions = []
+        self.true_values = []
+
         model_path = Path(arguments["eval_path"]) / "model.pkl"
         if not model_path.exists():
             logging.error(f"Model not found at {model_path}")
@@ -64,35 +67,28 @@ class NNCapsule:
                     targets.to(self.device, non_blocking=True),
                 )
                 outputs = self.model(inputs)
-                losses = self.criterion(outputs, targets)
-                losses += losses.detach()
+
+                losses += self.criterion(outputs, targets).detach()
+                self.predictions.append(outputs)
+                self.true_values.append(targets)
+
         self.loss = losses.item() / len(self.test_loader)
+        self.predictions = torch.cat(self.predictions, dim=0).to("cpu")
+        self.true_values = torch.cat(self.true_values, dim=0).to("cpu")
 
         logging.info("Testing complete.")
         logging.info(f"Loss: {self.loss:.2e}")
 
     def save_ytrue_ypred_inputs(self, loader, path):
-        predictions = []
-        true_values = []
-        with torch.no_grad():
-            for inputs, targets in loader:
-                inputs = inputs.to(self.device)
-                outputs = self.model(inputs)
-                predictions.append(outputs)
-                true_values.append(targets)
-
-        # Concatenate all batches into single tensors
-        predictions = torch.cat(predictions, dim=0).to("cpu")
-        true_values = torch.cat(true_values, dim=0).to("cpu")
         indices = loader.dataset.indices
 
-        # Unscale the true values, predictions and inputs
+        # Unscale the true values and predictions
         if self.data_manager.scale:
             predictions = torch.tensor(
-                self.scaler.label_scaler.inverse_transform(predictions)
+                self.scaler.label_scaler.inverse_transform(self.predictions)
             )
             true_values = torch.tensor(
-                self.scaler.label_scaler.inverse_transform(true_values)
+                self.scaler.label_scaler.inverse_transform(self.true_values)
             )
 
         # Save to netCDF
