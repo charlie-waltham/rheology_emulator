@@ -4,14 +4,13 @@
 import argparse as ap
 import random
 
+import models
 import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import xarray as xr
 import yaml
-
-from . import models
 
 
 # Parse command line arguments

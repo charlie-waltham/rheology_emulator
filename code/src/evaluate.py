@@ -18,7 +18,7 @@ import xarray as xr
 import yaml
 from PIL import Image
 from scipy.interpolate import griddata
-from scipy.spatial import cKDTree
+from scipy.spatial import KDTree
 
 FIG_SIZE = (8, 8)
 
@@ -29,19 +29,22 @@ def metrics(ds: xr.Dataset) -> dict:
     It is assumed that labels are change in velocity, rather than the net velocity.
     """
 
-    y_true = torch.tensor(ds.true_magnitude.values)
-    y_pred = torch.tensor(ds.pred_magnitude.values)
+    y_true = torch.tensor(ds.true.values)
+    y_pred = torch.tensor(ds.pred.values)
+
+    y_true_mag = torch.tensor(ds.true_magnitude.values)
+    y_pred_mag = torch.tensor(ds.pred_magnitude.values)
 
     values = {}
-    values["mean_true"] = torch.mean(y_true)
-    values["mean_pred"] = torch.mean(y_pred)
+    values["mean_true"] = torch.mean(y_true_mag)
+    values["mean_pred"] = torch.mean(y_pred_mag)
     values["mse"] = F.mse_loss(y_pred, y_true)
     values["mae"] = F.l1_loss(y_pred, y_true)
     values["rmse_cms"] = torch.sqrt(values["mse"]) * 100
     values["skill"] = 1 - values["mse"] / F.mse_loss(torch.zeros_like(y_true), y_true)
 
-    true_dev = y_true - values["mean_true"]
-    pred_dev = y_pred - values["mean_pred"]
+    true_dev = y_true_mag - values["mean_true"]
+    pred_dev = y_pred_mag - values["mean_pred"]
     values["acc"] = torch.sum(true_dev * pred_dev) / torch.sqrt(
         torch.sum(true_dev**2) * torch.sum(pred_dev**2)
     )
@@ -253,7 +256,7 @@ def plot_polar_map(
             (x_points, y_points), values, (grid_x_2d, grid_y_2d), method="linear"
         )
         # Distance masking
-        tree = cKDTree(np.column_stack((x_points, y_points)))
+        tree = KDTree(np.column_stack((x_points, y_points)))
         # Query tree (flatten grid for query)
         grid_pixels = np.column_stack((grid_x_2d.ravel(), grid_y_2d.ravel()))
         dist, _ = tree.query(grid_pixels)
