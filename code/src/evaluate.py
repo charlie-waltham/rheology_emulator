@@ -20,7 +20,16 @@ from PIL import Image
 from scipy.interpolate import griddata
 from scipy.spatial import KDTree
 
-FIG_SIZE = (8, 8)
+FIG_SIZE = (4, 4)
+FIG_SIZE_LARGE = (6, 6)
+WIDE_FIG_SIZE = (8, 4)
+
+SEASON_NAMES = {
+    "DJF": "December, January, February",
+    "MAM": "March, April, May",
+    "JJA": "June, July, August",
+    "SON": "September, October, November",
+}
 
 
 def metrics(ds: xr.Dataset) -> dict:
@@ -38,6 +47,7 @@ def metrics(ds: xr.Dataset) -> dict:
     values = {}
     values["mean_true"] = torch.mean(y_true_mag)
     values["mean_pred"] = torch.mean(y_pred_mag)
+    values["std"] = torch.std(y_pred_mag)
     values["mse"] = F.mse_loss(y_pred, y_true)
     values["mae"] = F.l1_loss(y_pred, y_true)
     values["rmse_cms"] = torch.sqrt(values["mse"]) * 100
@@ -122,6 +132,7 @@ def plot_hexbin(
     gridsize: int = 60,
     extent: tuple[float, float, float, float] | None = None,
     ax: plt.Axes | None = None,
+    title="Sea Ice Speed Hexbin True vs. Pred",
 ):
     """Create a hexbin scatter plot with log color scale."""
     if ax is None:
@@ -146,7 +157,7 @@ def plot_hexbin(
 
     ax.set_xlabel("True Values")
     ax.set_ylabel("Predictions")
-    ax.set_title("Hexbin (Pred vs True)")
+    ax.set_title(title)
     ax.grid(True, alpha=0.3)
     ax.legend(loc="best", fontsize="small")
     return fig, ax
@@ -158,21 +169,23 @@ def plot_hist(
     x_range: tuple[float, float] | None = None,
     density: bool = True,
     ax: plt.Axes | None = None,
-    title: str = "Sea Ice Velocity True vs. Pred",
+    title: str = "Sea Ice Speed True vs. Pred",
 ):
     """Plot normalized histograms of true and predicted values."""
     if ax is None:
         fig, ax = plt.subplots(figsize=FIG_SIZE)
     else:
         fig = ax.figure
-    # determine plotting range: if user provided x_range, use it; otherwise
-    # compute central 99.5% coverage (percentiles 0.25 and 99.75) of combined data
+
     y_true = ds.true_magnitude.values
     y_pred = ds.pred_magnitude.values
-    # combine true and pred into a single 1-D array; concatenating empty arrays yields empty array
-    combined = np.concatenate([y_true.ravel(), y_pred.ravel()])
 
+    # determine plotting range: if user provided x_range, use it; otherwise
+    # compute central 99.5% coverage (percentiles 0.25 and 99.75) of combined data
     if x_range is None:
+        # combine true and pred into a single 1-D array; concatenating empty arrays yields empty array
+        combined = np.concatenate([y_true.ravel(), y_pred.ravel()])
+
         if combined.size == 0:
             xlo, xhi = -0.1, 0.1
         else:
@@ -224,13 +237,18 @@ def plot_polar_map(
     resolution: int = 1024,
     lat_cutoff: int = 50,
     dist_threshold: int = 25000,
+    vmin=1e-6,
+    vmax=1,
+    log=True,
+    colourmap="viridis",
     title: str = "Sea Ice Velocity MAE",
+    colourbar_label="Mean Absolute Error (m/s)",
 ):
     """Create a polar-projected map of values."""
 
     lat, lon = lat_lon[:, 0], lat_lon[:, 1]
 
-    scalar = np.hypot(values[:, 0], values[:, 1]) if values.ndim > 1 else values
+    scalar = np.linalg.norm(values, axis=0) if values.ndim > 1 else values
 
     if hemisphere == "south":
         projection = ccrs.SouthPolarStereo()
@@ -268,7 +286,7 @@ def plot_polar_map(
     # Interpolate values
     grid_scalar = interpolate_and_mask(scalar)
 
-    fig = plt.figure(figsize=(10, 8))
+    fig = plt.figure(figsize=FIG_SIZE_LARGE)
     ax = plt.axes(projection=projection, facecolor="cornflowerblue")
     ax.set_extent(extent, src_crs)
     ax.add_feature(cfeature.LAND, zorder=2, facecolor="grey", edgecolor="black")
@@ -281,18 +299,24 @@ def plot_polar_map(
     circle = mpath.Path(verts * radius + center)
     ax.set_boundary(circle, transform=ax.transAxes)
 
+    # Define norm
+    if log:
+        norm = colors.LogNorm(vmin=vmin, vmax=vmax)
+    else:
+        norm = colors.Normalize(vmin=vmin, vmax=vmax)
+
     # Plot scalars
     mesh = ax.pcolormesh(
         grid_x_2d,
         grid_y_2d,
         grid_scalar,
         transform=projection,
-        norm=colors.LogNorm(1e-6, 1),
-        cmap="viridis",
+        norm=norm,
+        cmap=colourmap,
         shading="auto",
         zorder=1,
     )
-    plt.colorbar(mesh, ax=ax, label="Mean Absolute Error (m/s)")
+    plt.colorbar(mesh, ax=ax, label=colourbar_label)
 
     # Don't use for now as u and v don't necessarily correspond to lat and lon
     if quiver and values.ndim > 1:
@@ -339,7 +363,7 @@ def plot_polar_map(
     return fig, ax
 
 
-def plot_polar_magnitude(ds: xr.Dataset, base_stride=1_000_000, **kwargs):
+def plot_polar_mae(ds: xr.Dataset, base_stride=1_000_000, **kwargs):
     stride = max(1, ds.sizes["indices"] // base_stride)
 
     # Extract Coordinates
@@ -347,16 +371,39 @@ def plot_polar_magnitude(ds: xr.Dataset, base_stride=1_000_000, **kwargs):
     lon = ds.coords["lon"].values[::stride]
     lat_lon = np.column_stack((lat, lon))
 
-    # Extract Vector Components (and subset them)
-    u_true = ds.true.loc["u"].values[::stride]
-    v_true = ds.true.loc["v"].values[::stride]
-    u_pred = ds.pred.loc["u"].values[::stride]
-    v_pred = ds.pred.loc["v"].values[::stride]
+    y_pred = torch.tensor(ds.pred.values[:, ::stride])
+    y_true = torch.tensor(ds.true.values[:, ::stride])
 
-    # Technically not MAE because not absolute
-    error = np.column_stack((u_true - u_pred, v_true - v_pred))
+    mae = F.l1_loss(y_pred, y_true, reduction="none")
+    mae = mae.mean(dim=0)
 
-    return plot_polar_map(error, lat_lon, **kwargs)
+    return plot_polar_map(mae.numpy(), lat_lon, **kwargs)
+
+
+def plot_polar_skill(ds: xr.Dataset, **kwargs):
+    # Extract Coordinates
+    lat = ds.coords["lat"].values
+    lon = ds.coords["lon"].values
+    lat_lon = np.column_stack((lat, lon))
+
+    y_pred = torch.tensor(ds.pred.values)
+    y_true = torch.tensor(ds.true.values)
+
+    skill = 1 - F.mse_loss(y_pred, y_true, reduction="none") / F.mse_loss(
+        torch.zeros_like(y_true), y_true, reduction="none"
+    )
+    skill = skill.mean(dim=0)
+
+    return plot_polar_map(
+        skill.numpy(),
+        lat_lon,
+        title="Sea Ice Velocity Prediction Skill",
+        colourbar_label="Prediction Skill",
+        vmin=0,
+        vmax=1,
+        log=False,
+        **kwargs,
+    )
 
 
 def plot_to_buffer(fig, **kwargs):
@@ -370,82 +417,108 @@ def plot_to_buffer(fig, **kwargs):
     return img
 
 
-def _plot_month_task(month, ds_month, polar_kwargs):
-    """Helper function for multiprocessing monthly plots."""
-    print(f"Processing {month}")
+def _plot_season_task(season, ds_season, polar_kwargs):
+    """Helper function for multiprocessing seasonal plots."""
+    print(f"Processing {season}")
     try:
         plt.style.use("seaborn-v0_8")
 
         hist, _ = plot_hist(
-            ds_month,
+            ds_season,
+            x_range=[0, 0.05],
             density=False,
-            title=f"Sea Ice Velocity True vs. Pred - Month {month}",
+            title=season,
         )
-        polar_map, _ = plot_polar_magnitude(
-            ds_month,
-            title=f"Sea Ice Velocity Error - Month {month}",
+        hexbin, _ = plot_hexbin(
+            ds_season,
+            extent=[0, 0.1, 0, 0.1],
+            title=season,
+        )
+        polar_map, _ = plot_polar_mae(
+            ds_season,
+            title=season,
             **polar_kwargs,
         )
 
         figs = {
             "hist": plot_to_buffer(hist, dpi=600, bbox_inches="tight"),
+            "hexbin": plot_to_buffer(hexbin, dpi=600, bbox_inches="tight"),
             "polar_map": plot_to_buffer(polar_map, dpi=600, bbox_inches="tight"),
         }
+        plt.close("all")
+
         return figs
     except Exception:
         print(traceback.format_exc())
 
 
-def plot_by_month(
+def plot_by_season(
     ds: xr.Dataset,
     out_dir: Path,
     polar_kwargs: dict = None,
 ):
     polar_kwargs = {} if polar_kwargs is None else polar_kwargs
 
-    months_dir = out_dir / "monthly"
-    months_dir.mkdir(parents=True, exist_ok=True)
+    logging.info("Splitting data into seasons")
 
-    logging.info("Splitting data into months")
+    # Compute seasons to memory to avoid dask grouping error
+    seasons = ds["time_features"].dt.season.values
+    ds = ds.assign_coords(season=("indices", seasons))
+    groups = ds.groupby("season")
 
-    # Compute months to memory to avoid dask grouping error
-    months = ds["time_features"].dt.month.values
-    ds = ds.assign_coords(month=("indices", months))
-    groups = ds.groupby("month")
+    # Don't bother if dataset only covers one season
+    if len(groups) <= 1:
+        return
 
     tasks = []
-    for month, ds_group in groups:
-        ds_month = ds_group.drop_vars("month")
-        tasks.append((month, ds_month, polar_kwargs))
+    for season, ds_group in groups:
+        ds_season = ds_group.drop_vars("season")
+        tasks.append((SEASON_NAMES.get(season), ds_season, polar_kwargs))
 
     # Use multiprocessing to plot
     ctx = mp.get_context("spawn")
     with ctx.Pool(processes=len(tasks)) as pool:
-        month_figs = pool.starmap(_plot_month_task, tasks)
+        month_figs = pool.starmap(_plot_season_task, tasks)
 
     hist_fig, hist_axs = plt.subplots(
-        4, 3, figsize=(15, 20), gridspec_kw={"wspace": 0.05, "hspace": 0.05}
+        2, 2, figsize=(10, 10), gridspec_kw={"wspace": 0, "hspace": 0}
+    )
+    hexbin_fig, hexbin_axs = plt.subplots(
+        2, 2, figsize=(10, 10), gridspec_kw={"wspace": 0, "hspace": 0}
     )
     polar_fig, polar_axs = plt.subplots(
-        4, 3, figsize=(15, 20), gridspec_kw={"wspace": 0.05, "hspace": 0.05}
+        2, 2, figsize=(10, 10), gridspec_kw={"wspace": 0, "hspace": 0}
     )
 
-    hist_axs = hist_axs.flatten()
-    polar_axs = polar_axs.flatten()
+    hist_fig.suptitle("Seasonal sea ice velocity Histogram True vs. Pred")
+    hexbin_fig.suptitle("Seasonal sea ice velocity Hexbin True vs. Pred")
+    polar_fig.suptitle("Seasonal sea ice velocity MAE")
+
+    hist_axs = hist_axs.T.flatten()
+    hexbin_axs = hexbin_axs.T.flatten()
+    polar_axs = polar_axs.T.flatten()
 
     for i in range(len(month_figs)):
         figures = month_figs[i]
         hist_axs[i].grid(False)
         hist_axs[i].axis("off")
+        hexbin_axs[i].grid(False)
+        hexbin_axs[i].axis("off")
         polar_axs[i].grid(False)
         polar_axs[i].axis("off")
 
         hist_axs[i].imshow(figures["hist"])
+        hexbin_axs[i].imshow(figures["hexbin"])
         polar_axs[i].imshow(figures["polar_map"])
 
-    hist_fig.savefig(months_dir / "hist.png", dpi=600, bbox_inches="tight")
-    polar_fig.savefig(months_dir / "polar_map.png", dpi=1000, bbox_inches="tight")
+    seasonal_dir = out_dir / "seasonal"
+    seasonal_dir.mkdir(parents=True, exist_ok=True)
+
+    hist_fig.savefig(seasonal_dir / "hist.png", dpi=600, bbox_inches="tight")
+    hexbin_fig.savefig(seasonal_dir / "hexbin.png", dpi=600, bbox_inches="tight")
+    polar_fig.savefig(seasonal_dir / "polar_map.png", dpi=1000, bbox_inches="tight")
     plt.close(hist_fig)
+    plt.close(hexbin_fig)
     plt.close(polar_fig)
 
 
@@ -453,18 +526,66 @@ def attributions(args: dict, config: dict):
     with open(args["eval_path"] + "/attributions.pkl", "rb") as file:
         attributions: dict = pickle.load(file)
 
-    x = np.arange(len(config["train_features"]))
+    label_map = {
+        "sivelv": "$V_v$",
+        "sivelu": "$V_u$",
+    }
+    feature_map = {
+        "siconc": "SIC",
+        "sithic": "SIT",
+        "sivel": "$V$",
+        "tau_ai": "$\\tau_{ai}$",
+        "tau_oi": "$\\tau_{wi}$",
+    }
+
+    features = config["train_features"]
+
+    # Find and group u/v vector pairs
+    def get_base_name(feat):
+        if feat.startswith("u") and feat.replace("u", "v", 1) in features:
+            return feat[1:]
+        if feat.startswith("v") and feat.replace("v", "u", 1) in features:
+            return feat[1:]
+        if feat.endswith("u") and feat[:-1] + "v" in features:
+            return feat[:-1]
+        if feat.endswith("v") and feat[:-1] + "u" in features:
+            return feat[:-1]
+        return feat
+
+    # Map raw features to their grouped names and keep the order
+    grouped_features = []
+    feature_to_group_idx = {}
+    for feat in features:
+        base = get_base_name(feat)
+        if base not in grouped_features:
+            grouped_features.append(base)
+        feature_to_group_idx[feat] = grouped_features.index(base)
+
+    x = np.arange(len(grouped_features))
     width = 1.0 / (len(config["train_labels"]) + 1)
 
     fig, ax = plt.subplots(figsize=FIG_SIZE)
-    for key, val in attributions.items():
-        mean_vals = np.abs(np.mean(val, axis=0))
 
+    for key, val in attributions.items():
+        raw_mean_vals = np.abs(np.mean(val, axis=0))
+
+        # Sum U and V components into the grouped array
+        grouped_vals = np.zeros(len(grouped_features))
+        for i, feat in enumerate(features):
+            idx = feature_to_group_idx[feat]
+            grouped_vals[idx] += raw_mean_vals[i]
+
+        target_name = config["train_labels"][key]
         ax.bar(
-            x + width * key, mean_vals, width=width, label=config["train_labels"][key]
+            x + width * key,
+            grouped_vals,
+            width=width,
+            label=label_map.get(target_name, target_name),
         )
+
     ax.legend()
-    ax.set_xticks(x + width / 2, config["train_features"])
+    ax.set_xticks(x + width * (len(config["train_labels"]) - 1) / 2)
+    ax.set_xticklabels(feature_map.get(f, f) for f in grouped_features)
     ax.set_title("Absolute Relative Feature Importances")
     ax.set_xlabel("Feature")
     ax.set_ylabel("Absolute Importance")
@@ -527,13 +648,20 @@ def evaluate_and_save(args: dict):
     fig.savefig(attributions_path, dpi=200, bbox_inches="tight")
     plt.close(fig)
 
-    # MAE Polar Maps
-    logging.info("sivel polar map")
-    fig, _ = plot_polar_magnitude(ds, hemisphere=config.get("hemisphere", "north"))
-    polar_path = out_dir / "polar_map.png"
+    # Polar Maps
+    logging.info("error polar map")
+    fig, _ = plot_polar_mae(ds, hemisphere=config.get("hemisphere", "north"))
+    polar_path = out_dir / "polar_map_error.png"
     fig.savefig(polar_path, dpi=600, bbox_inches="tight")
     plt.close(fig)
 
-    plot_by_month(
+    logging.info("skill polar map")
+    fig, _ = plot_polar_skill(ds, hemisphere=config.get("hemisphere", "north"))
+    polar_path = out_dir / "polar_map_skill.png"
+    fig.savefig(polar_path, dpi=600, bbox_inches="tight")
+    plt.close(fig)
+
+    # Seasonal plots
+    plot_by_season(
         ds, out_dir, polar_kwargs={"hemisphere": config.get("hemisphere", "north")}
     )

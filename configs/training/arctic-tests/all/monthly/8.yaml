@@ -1,6 +1,6 @@
-pairs_path: ../data/processed/arctic/all/5.zarr
+pairs_path: ../data/processed/arctic/all/monthly/8.zarr
 parameters: ../configs/parameters/nn_test.yaml
-results_path: ../results/nn/arctic-tests/all/5/
+results_path: ../results/nn/arctic-tests/all/monthly/8/
 architecture: ../configs/nn_architecture/resnet.yaml
 
 save_model: True
@@ -14,6 +14,10 @@ zarr_fmt: fmt2
 difference_labels: True
 scale_features: True
 
-batch_size: 8192
+batch_size: 2048
 val_fraction: 0.2
 test_fraction: 0.1
+
+attr_baseline: 100
+attr_samples: 10000
+attr_batch_size: 10

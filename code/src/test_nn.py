@@ -90,6 +90,9 @@ class NNCapsule:
             true_values = torch.tensor(
                 self.scaler.label_scaler.inverse_transform(self.true_values)
             )
+        else:
+            predictions = self.predictions
+            true_values = self.true_values
 
         # Save to netCDF
         ds = xr.Dataset(

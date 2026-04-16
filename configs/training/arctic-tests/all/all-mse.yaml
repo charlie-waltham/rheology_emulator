@@ -1,6 +1,6 @@
 pairs_path: ../data/processed/arctic/all/all.zarr
 parameters: ../configs/parameters/nn_test_mse.yaml
-results_path: ../results/nn/arctic-tests/all/all/
+results_path: ../results/nn/arctic-tests/all/all-mse/
 architecture: ../configs/nn_architecture/resnet.yaml
 
 save_model: True
