@@ -23,7 +23,7 @@ metrics = {
     "skill": [],
     "acc": [],
     "mean_pred": [],
-    "std": []
+    "std": [],
 }
 for run in runs:
     for metric, value in run.items():
@@ -41,7 +41,7 @@ titles = [
     "Skill",
     "Anomaly Correlation Coefficient",
     "Mean Speed",
-    "Std. Deviation"
+    "Std. Deviation",
 ]
 
 for i, (metric, values) in enumerate(metrics.items()):

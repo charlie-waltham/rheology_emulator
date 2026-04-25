@@ -24,7 +24,7 @@ def main():
         tests_path = sys.argv[1]
         results_dir = sys.argv[2]
     else:
-        print("Usage: python test.py <tests_path> <results_dir>")
+        print("Usage: python monthly.py <tests_path> <results_dir>")
         exit(0)
 
     full_tests_path = Path("../configs/training") / tests_path
@@ -54,7 +54,9 @@ def main():
         result = next(result_path.iterdir(), None)
 
         if result is not None:
-            print(f"{line}\nResult {result} already exists. Skipping training/testing.\n{line}\n")
+            print(
+                f"{line}\nResult {result} already exists. Skipping training/testing.\n{line}\n"
+            )
             evaluate_model({"evaluate": True, "eval_path": str(result)})
         else:
             print(f"{line}\nTesting {config_path}\n{line}\n")
