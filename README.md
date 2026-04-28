@@ -24,7 +24,7 @@ pip install -r requirements.txt
 ```
 
 ## Datasets
-An Arctic dataset should be provided at `data/processed/arctic/all/all.zarr`. Likewise for the Antarctic at `data/processed/anatarctic/all/all.zarr`.
+An Arctic dataset should be provided at `data/processed/arctic/all/all.zarr`. Likewise for the Antarctic at `data/processed/antarctic/all/all.zarr`.
 
 ## Training
 An example of training an Arctic model with config located at `configs/training/arctic-tests/all/all.yaml` is shown below.
