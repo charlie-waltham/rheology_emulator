@@ -297,6 +297,9 @@ def main():
             return
 
         evaluate_model(args)
+    
+    else:
+        print("At least one argument of --train, --test, or --evaluate must be provided.")
 
 
 if __name__ == "__main__":

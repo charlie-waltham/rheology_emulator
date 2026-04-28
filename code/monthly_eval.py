@@ -29,6 +29,8 @@ for run in runs:
     for metric, value in run.items():
         if metric in metrics:
             metrics[metric].append(value)
+            if metric == "rmse_cms":
+                metrics[metrics] /= 100
 
 fig, axs = plt.subplots(2, 3, figsize=(9, 6))
 axs = axs.flatten()
@@ -37,7 +39,7 @@ fig.suptitle("Monthly Model Performance Metrics")
 months = np.arange("1976-01", "1977-01", dtype="datetime64[M]")
 titles = [
     "Mean Absolute Error",
-    "RMSE (cm)",
+    "RMSE",
     "Skill",
     "Anomaly Correlation Coefficient",
     "Mean Speed",

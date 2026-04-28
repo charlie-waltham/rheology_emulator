@@ -3,8 +3,9 @@ from pathlib import Path
 import torch
 import xarray as xr
 import yaml
-from scaling import LogFLTransformer
-from utils import define_nn
+
+from src.scaling import LogFLTransformer
+from src.utils import define_nn
 
 
 class RheologyModel:

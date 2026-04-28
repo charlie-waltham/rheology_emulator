@@ -5,6 +5,11 @@ Here, we aim at deriving a cheap statistical emulator for the rheology solver in
 ## Installation
 Ensure CUDA 12.6 is installed on your system.
 
+Clone the repository:
+```
+git clone https://github.com/charlie-waltham/rheology_emulator.git
+```
+
 Install with [uv](https://docs.astral.sh/uv/):
 ```
 uv venv
