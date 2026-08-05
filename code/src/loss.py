@@ -15,13 +15,24 @@ class ShrinkageLoss(nn.Module):
         self.c = c
         self.reduction = reduction
 
-    def forward(self, x, y):
+    def forward(self, x, y, mask=None):
         mae = F.l1_loss(x, y, reduction="none")
         loss = (mae**2) / (1 + torch.exp(self.a * (self.c - mae)))
 
-        if self.reduction == "mean":
-            return loss.mean()
-        elif self.reduction == "sum":
-            return loss.sum()
+        if mask is not None:
+            loss = torch.where(mask, loss, torch.zeros_like(loss))
+
+            if self.reduction == "mean":
+                valid_elements = mask.expand_as(loss).sum()
+                return loss.sum() / (valid_elements + 1e-8)
+            elif self.reduction == "sum":
+                return loss.sum()
+            else:
+                return loss
         else:
-            return loss
+            if self.reduction == "mean":
+                return loss.mean()
+            elif self.reduction == "sum":
+                return loss.sum()
+            else:
+                return loss

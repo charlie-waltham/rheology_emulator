@@ -1,0 +1,26 @@
+pairs_path: ../data/2d/*.nc
+parameters: ../configs/parameters/nn_2d.yaml
+results_path: ../results/nn/2d/stencil5/
+architecture: ../configs/nn_architecture/2d/stencil5.yaml
+
+save_model: True
+save_data: True
+
+train_features: ['siconc', 'sithic', 'sivelv', 'sivelu', 'utau_ai', 'utau_oi', 'vtau_ai', 'vtau_oi']
+train_labels: ['sivelv', 'sivelu']
+
+zarr_fmt: 2d
+difference_labels: True
+scale_features: True
+
+batch_size: 16
+val_fraction: 0.2
+test_fraction: 0.1
+
+patch_size: 32
+patches_per_image: 20
+
+attr_baseline: 100
+attr_samples: 10000
+attr_batch_size: 50
+hemisphere: south

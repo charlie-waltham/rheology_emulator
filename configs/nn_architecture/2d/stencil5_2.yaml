@@ -1,0 +1,4 @@
+model:
+  fcn:
+    type: StencilResMLP
+    args: [null, null, 512, 0.5, 32, 5]

@@ -16,6 +16,7 @@ import torch.multiprocessing as mp
 import torch.nn.functional as F
 import xarray as xr
 import yaml
+from matplotlib.figure import Figure
 from PIL import Image
 from scipy.interpolate import griddata
 from scipy.spatial import KDTree
@@ -406,7 +407,7 @@ def plot_polar_skill(ds: xr.Dataset, **kwargs):
     )
 
 
-def plot_to_buffer(fig, **kwargs):
+def plot_to_buffer(fig: Figure, **kwargs):
     """https://github.com/paulgavrikov/parallel-matplotlib-grid/blob/main/parallelplot/plot.py"""
     buf = io.BytesIO()
     fig.savefig(buf, **kwargs)
@@ -425,13 +426,13 @@ def _plot_season_task(season, ds_season, polar_kwargs):
 
         hist, _ = plot_hist(
             ds_season,
-            x_range=[0, 0.05],
+            x_range=(0, 0.05),
             density=False,
             title=season,
         )
         hexbin, _ = plot_hexbin(
             ds_season,
-            extent=[0, 0.1, 0, 0.1],
+            extent=(0, 0.1, 0, 0.1),
             title=season,
         )
         polar_map, _ = plot_polar_mae(

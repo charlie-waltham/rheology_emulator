@@ -1,7 +1,7 @@
 import numpy as np
 from sklearn.compose import ColumnTransformer
-from sklearn.discriminant_analysis import StandardScaler
 from sklearn.pipeline import FunctionTransformer, Pipeline
+from sklearn.preprocessing import StandardScaler
 
 
 class InvertableColumnTransformer(ColumnTransformer):
@@ -16,11 +16,15 @@ class InvertableColumnTransformer(ColumnTransformer):
 
     def inverse_transform(self, X):
         arrays = []
+        original_col_indices = []
         for name, indices in self.output_indices_.items():
             transformer = self.named_transformers_.get(name, None)
             arr = X[:, indices.start : indices.stop]
 
-            if transformer in (None, "passthrough", "drop"):
+            if (
+                transformer in (None, "passthrough", "drop")
+                or indices.start == indices.stop
+            ):
                 pass
 
             else:
@@ -28,12 +32,31 @@ class InvertableColumnTransformer(ColumnTransformer):
 
             arrays.append(arr)
 
+            for trans_name, trans_obj, orig_cols in self.transformers_:
+                if trans_name == name:
+                    if trans_name == "remainder":
+                        all_specified = [
+                            col
+                            for t_name, _, t_cols in self.transformers_
+                            if t_name != "remainder" and t_name != "drop"
+                            for col in t_cols
+                        ]
+                        orig_cols = [
+                            c for c in range(X.shape[1]) if c not in all_specified
+                        ]
+                    original_col_indices.extend(orig_cols)
+                    break
+
         retarr = np.concatenate(arrays, axis=1)
 
         if retarr.shape[1] != X.shape[1]:
             raise ValueError(
                 f"Received {X.shape[1]} columns but transformer expected {retarr.shape[1]}"
             )
+
+        if len(original_col_indices) == retarr.shape[1]:
+            rev_perm = np.argsort(original_col_indices)
+            retarr = retarr[:, rev_perm]
 
         return retarr
 
@@ -44,13 +67,16 @@ class LogFLTransformer:
         features,
         labels,
         feature_names,
+        label_names,
+        features_to_log_scale,
+        labels_to_log_scale,
         feature_scale_factor: float,
         label_scale_factor: float,
     ):
         self.feature_scale_factor = feature_scale_factor
         self.label_scale_factor = label_scale_factor
 
-        self.feature_vel_scaler = Pipeline(
+        self.feature_log_scaler = Pipeline(
             [
                 (
                     "log",
@@ -74,7 +100,7 @@ class LogFLTransformer:
 
         # Define a scaler for all features
         self.feature_scaler = InvertableColumnTransformer(
-            transformers=[("velocity", self.feature_vel_scaler, vel_indices)],
+            transformers=[("velocity", self.feature_log_scaler, vel_indices)],
             remainder=StandardScaler(),
         )
 

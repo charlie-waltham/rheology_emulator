@@ -7,3 +7,6 @@ data
 
 code/*.log
 code/raw_retrieval/*
+
+data.txt
+Logbook.xlsx

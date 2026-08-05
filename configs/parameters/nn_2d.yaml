@@ -1,0 +1,6 @@
+loss: ShrinkageLoss
+shrinkage_a: 10
+shrinkage_c: 0.2
+optimizer: Adam
+learning_rate: 0.01
+epochs: 50

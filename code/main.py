@@ -81,6 +81,12 @@ def parse_arguments():
         help="Path to where model results will be saved",
     )
     parser.add_argument(
+        "--cache_path",
+        type=str,
+        required=False,
+        help="Path to where preprocessed dataset will be cached for future use."
+    )
+    parser.add_argument(
         "--batch_size", type=int, default=64, help="Batch size for training"
     )
     parser.add_argument(
@@ -120,10 +126,10 @@ def parse_arguments():
         help="Whether to use sequential data loading (for RNNs)",
     )
     parser.add_argument(
-        "--hemisphere",
-        type=str,
-        default="north",
-        help="Hemisphere to plot MAE maps for",
+        "--patch_size", type=int, default=None, help="Patch size for training"
+    )
+    parser.add_argument(
+        "--patches_per_image", type=int, default=None, help="Patches per image for training"
     )
 
     # Arguments for testing / evaluation
@@ -153,6 +159,12 @@ def parse_arguments():
     )
     parser.add_argument(
         "--attr_batch_size", type=int, default=50, help="Batch size for attributions"
+    )
+    parser.add_argument(
+        "--hemisphere",
+        type=str,
+        default="north",
+        help="Hemisphere to plot MAE maps for",
     )
 
     return vars(parser.parse_args())
@@ -228,8 +240,11 @@ def train_model(args: dict) -> str:
         return
 
     logging.info("Training model...")
-    from src.train_nn import train_save_eval
 
+    if args.get("zarr_fmt") == "2d":
+        from src.train_2dnn import train_save_eval
+    else:
+        from src.train_nn import train_save_eval
     train_save_eval(args)
 
     shutil.copy("main.log", args["results_path"] + "train.log")
@@ -243,7 +258,10 @@ def train_model(args: dict) -> str:
 def test_model(args):
     load_config(args["eval_path"] + "/used_training_config.yaml", args)
 
-    from src.test_nn import test_save_eval
+    if args.get("zarr_fmt") == "2d":
+        from src.test_2dnn import test_save_eval
+    else:
+        from src.test_nn import test_save_eval
 
     test_save_eval(args)
 
@@ -279,7 +297,7 @@ def main():
 
     setup_logging()
     plt.style.use("seaborn-v0_8")
-    plt.switch_backend("agg")
+    #plt.switch_backend("agg")
 
     if args["train"]:
         train_model(args)
